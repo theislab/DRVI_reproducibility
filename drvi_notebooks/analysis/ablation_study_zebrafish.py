@@ -8,9 +8,9 @@
 #       format_version: '1.5'
 #       jupytext_version: 1.15.2
 #   kernelspec:
-#     display_name: drvi
+#     display_name: drvi-repr
 #     language: python
-#     name: drvi
+#     name: drvi-repr
 # ---
 
 # # Imports
@@ -21,11 +21,7 @@
 # +
 import os
 
-import scanpy as sc
-
-from matplotlib.pyplot import rcParams
 import matplotlib.pyplot as plt
-import seaborn as sns
 # -
 
 import warnings
@@ -33,39 +29,15 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # +
-import os
-import sys
-import argparse
-import shutil
-import pickle
-import itertools
-
-import anndata as ad
 import scanpy as sc
-import pickle as pkl
 import pandas as pd
-from scipy.sparse import csr_matrix, find
 import numpy as np
-from sklearn.preprocessing import minmax_scale
-from scipy.stats import entropy
-from sklearn.cluster import MiniBatchKMeans
 from pathlib import Path
-import gc
 
-from matplotlib.pyplot import rcParams
-import matplotlib.pyplot as plt
-import seaborn as sns
-from scib_metrics.benchmark import Benchmarker
-
-from drvi.utils.metrics import (most_similar_averaging_score, latent_matching_score, 
-    nn_alignment_score, local_mutual_info_score, spearman_correlataion_score)
 from drvi_notebooks.utils.data.adata_plot_pp import make_balanced_subsample
 from drvi_notebooks.utils.data.data_configs import get_data_info
 from drvi_notebooks.utils.run_info import get_run_info_for_dataset
 from drvi_notebooks.utils.latent import set_optimal_ordering
-from drvi_notebooks.utils.plotting import plot_per_latent_scatter, scatter_plot_per_latent
-
-from gprofiler import GProfiler
 # -
 sc.set_figure_params(vector_friendly=True, dpi_save=300)
 
@@ -114,24 +86,6 @@ wong_pallete = [
 cat_100_pallete = sc.plotting.palettes.godsnot_102
 
 
-# ## Utils
-
-# +
-def _m1(l):
-    if isinstance(l, list):
-        if isinstance(l[0], list):
-            return [[x - 1 for x in y] for y in l]
-        return [x - 1 for x in l]
-    return l - 1
-
-def _p1(l):
-    if isinstance(l, list):
-        if isinstance(l[0], list):
-            return [[x + 1 for x in y] for y in l]
-        return [x + 1 for x in l]
-    return l + 1
-# -
-
 # ## Data
 
 
@@ -166,81 +120,6 @@ for method_name, run_path in RUNS_TO_LOAD.items():
 
 
 
-
-# +
-# size = 3
-
-# for _, col in enumerate(plot_columns):
-#     fig,axs=plt.subplots(1, len(embeds),
-#                      figsize=(len(embeds) * size, 1 * size),
-#                      sharey='row', squeeze=False)
-#     j = 0
-#     for i, (method_name, embed) in enumerate(embeds.items()):
-    
-#         pos = (-0.1, 0.5)
-        
-#         ax = axs[j, i]
-#         unique_values = list(sorted(list(embed.obs[col].astype(str).unique())))
-#         # if len(unique_values) <= 8:
-#         #     palette = dict(zip(unique_values, wong_pallete))
-#         if len(unique_values) <= 10:
-#             palette = dict(zip(unique_values, cat_10_pallete))
-#         elif len(unique_values) <= 20:
-#             palette = dict(zip(unique_values, cat_20_pallete))
-#         elif len(unique_values) <= 102:
-#             palette = dict(zip(unique_values, cat_100_pallete))
-#         else:
-#             palette = None
-#         sc.pl.embedding(embed, 'X_umap',
-#                         color=col, 
-#                         palette=palette, 
-#                         ax=ax, show=False, frameon=False, title='' if j != 0 else method_name, 
-#                         legend_loc='none' if i != len(embeds) - 1 else 'right margin',
-#                         colorbar_loc=None if i != len(embeds) - 1 else 'right')
-#         if i == 0:
-#             ax.annotate(col_mapping[col], zorder=100, fontsize=12,
-#                         xy=pos, xytext=pos, textcoords='axes fraction', rotation='vertical', va='center', ha='center')
-
-#     plt.subplots_adjust(left=0.1,
-#                         bottom=0.05,
-#                         right=0.95,
-#                         top=0.95,
-#                         wspace=0.1,
-#                         hspace=0.1)   
-#     plt.savefig(proj_dir / 'plots' / 'zebrafish_ablation_hvg' / f'plot_{run_name}_umaps_{col}.pdf', bbox_inches='tight')
-
-# +
-# MAX_CELLS_TO_PLOT = None
-# for method_name, embed in embeds.items():
-#     print(method_name)
-#     mask = np.abs(embed.X).max(axis=0) > 0.1
-#     if mask.sum() % 2 == 1:
-#         for i in range(len(mask)):
-#             if not mask[i]:
-#                 mask[i] = True
-#                 break
-#     embed = embed[:, mask].copy()
-#     set_optimal_ordering(embed, key_added='optimal_var_order', metric='euclidean+')
-#     plot_latent_dims_in_umap(embed, max_cells_to_plot=MAX_CELLS_TO_PLOT, optimal_order=True, vcenter=0, cmap='RdBu_r')
-#     plt.show()
-
-# +
-# MAX_CELLS_TO_PLOT = None
-# for method_name, embed in embeds.items():
-#     print(method_name)
-#     mask = np.abs(embed.X).max(axis=0) > 0.1
-#     if mask.sum() % 2 == 1:
-#         for i in range(len(mask)):
-#             if not mask[i]:
-#                 mask[i] = True
-#                 break
-#     embed = embed[:, mask].copy()
-#     set_optimal_ordering(embed, key_added='optimal_var_order', metric='euclidean+')
-#     plots = scatter_plot_per_latent(embed, 'qz_mean', plot_columns, max_cells_to_plot=MAX_CELLS_TO_PLOT, 
-#                                     xy_limit=5 if method_name in ['DRVI', 'DRVI-IK', 'scVI'] else None, s=10)
-#     for col, plt in zip(plot_columns, plots):
-#         plt.show()
-# -
 
 for method_name, embed in embeds.items():
     print(method_name)

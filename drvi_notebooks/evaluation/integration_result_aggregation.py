@@ -8,9 +8,9 @@
 #       format_version: '1.5'
 #       jupytext_version: 1.15.2
 #   kernelspec:
-#     display_name: drvi
+#     display_name: drvi-repr
 #     language: python
-#     name: drvi
+#     name: drvi-repr
 # ---
 
 # # Imports
@@ -34,7 +34,6 @@ warnings.filterwarnings('ignore')
 
 # +
 import os
-import pickle
 
 import scanpy as sc
 import pandas as pd

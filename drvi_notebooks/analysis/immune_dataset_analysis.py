@@ -8,9 +8,9 @@
 #       format_version: '1.5'
 #       jupytext_version: 1.15.2
 #   kernelspec:
-#     display_name: drvi
+#     display_name: drvi-repr
 #     language: python
-#     name: drvi
+#     name: drvi-repr
 # ---
 
 # # Imports
@@ -26,7 +26,6 @@ import scanpy as sc
 
 from matplotlib.pyplot import rcParams
 import matplotlib.pyplot as plt
-import seaborn as sns
 # -
 
 import warnings
@@ -35,36 +34,21 @@ warnings.filterwarnings('ignore')
 
 # +
 import os
-import sys
-import argparse
 import shutil
 import pickle
-import itertools
 
-import anndata as ad
 import scanpy as sc
-import pickle as pkl
 import pandas as pd
-from scipy.sparse import csr_matrix, find
 import numpy as np
-from sklearn.preprocessing import minmax_scale
-from scipy.stats import entropy
-from sklearn.cluster import MiniBatchKMeans
 from pathlib import Path
-import gc
 
-from matplotlib.pyplot import rcParams
-import matplotlib.pyplot as plt
-import seaborn as sns
 from scib_metrics.benchmark import Benchmarker
 
 import drvi
 from drvi_notebooks.utils.data.data_configs import get_data_info
 from drvi_notebooks.utils.run_info import get_run_info_for_dataset
 from drvi_notebooks.utils.method_info import pretify_method_name
-from drvi_notebooks.utils.plotting import plot_per_latent_scatter, scatter_plot_per_latent
-
-from gprofiler import GProfiler
+from drvi_notebooks.utils.plotting import plot_per_latent_scatter
 # -
 sc.set_figure_params(vector_friendly=True, dpi_save=300)
 
@@ -76,13 +60,16 @@ mplscience.set_style()
 # # Config
 
 cwd = os.getcwd()
-cwd
+
+logs_dir = Path(os.path.expanduser('~/workspace/train_logs'))
+logs_dir
 
 proj_dir = Path(cwd).parent.parent
 proj_dir
 
-logs_dir = Path(os.path.expanduser('~/workspace/train_logs'))
-logs_dir
+output_dir = proj_dir / 'plots' / 'immune_analysis'
+output_dir.mkdir(parents=True, exist_ok=True)
+output_dir
 
 # +
 run_name = 'immune_hvg'
@@ -110,35 +97,16 @@ wong_pallete = [
 ]
 cat_100_pallete = sc.plotting.palettes.godsnot_102
 
-
 # ## Utils
-
-# +
-def _m1(l):
-    if isinstance(l, list):
-        if isinstance(l[0], list):
-            return [[x - 1 for x in y] for y in l]
-        return [x - 1 for x in l]
-    return l - 1
-
-def _p1(l):
-    if isinstance(l, list):
-        if isinstance(l[0], list):
-            return [[x + 1 for x in y] for y in l]
-        return [x + 1 for x in l]
-    return l + 1
-
-
-# -
 
 original_params = plt.rcParams.copy()
 def set_font_in_rc_params():
     fs = 16
     plt.rcParams.update({
         'font.size': fs,            # General font size
-        'axes.titlesize': fs,      # Title font size
-        'axes.labelsize': fs,      # Axis label font size
-        'legend.fontsize': fs,    # Legend font size
+        'axes.titlesize': fs,       # Title font size
+        'axes.labelsize': fs,       # Axis label font size
+        'legend.fontsize': fs,      # Legend font size
         'xtick.labelsize': fs,      # X-axis tick label font size
         'ytick.labelsize': fs       # Y-axis tick label font size
     })
@@ -150,6 +118,8 @@ adata = sc.read(data_path)
 adata
 
 # ## Runs to load
+
+# All these runs are created by the scripts in `general` and `baseline` directories. You need to run them first.
 
 # +
 run_info = get_run_info_for_dataset('immune_hvg')
@@ -178,222 +148,6 @@ for method_name, run_path in RUNS_TO_LOAD.items():
 
 
 
-# ## DRVI
-
-
-
-embed_drvi = embeds['DRVI']
-model_drvi = drvi.model.DRVI.load(RUNS_TO_LOAD['DRVI'] / 'model.pt', adata, prefix='v_0_1_0_')
-adata.obsm['X_umap_drvi'] = embed_drvi[adata.obs.index].obsm['X_umap']
-
-# +
-col = cell_type_key
-unique_values = list(sorted(list(embed.obs[col].astype(str).unique())))
-palette = dict(zip(unique_values, cat_20_pallete))
-fig = sc.pl.umap(embed_drvi, color=col, 
-                 palette = palette, 
-                 show=False, frameon=False, title='', 
-                 legend_loc='right margin',
-                 colorbar_loc=None,
-                 return_fig=True)
-
-
-plt.legend(ncol=1, bbox_to_anchor=(1.1, -.15))
-fig.savefig(proj_dir / 'plots' / 'immune_analysis_v3' / f'drvi_umap.pdf', bbox_inches='tight', dpi=300)
-# -
-
-
-
-
-# # Analysis pipeline
-
-model = model_drvi
-embed = embed_drvi
-
-drvi.utils.tl.set_latent_dimension_stats(model, embed)
-drvi.utils.pl.plot_latent_dimension_stats(embed, ncols=2)
-
-traverse_adata = drvi.utils.tl.traverse_latent(model, embed, n_samples=20, max_noise_std=0.2)
-drvi.utils.tl.calculate_differential_vars(traverse_adata)
-traverse_adata
-
-
-
-
-embed_balanced = drvi.utils.pl.make_balanced_subsample(embed, cell_type_key)
-embed.var['best_diagonal_order'] = np.abs(embed_balanced.X).argmax(axis=0).tolist()
-fig = drvi.utils.pl.plot_latent_dims_in_heatmap(embed, cell_type_key, order_col='best_diagonal_order', remove_vanished=False, show=False)
-plt.savefig(proj_dir / 'plots' / 'immune_analysis_v3' / f'drvi_heatmap_diagonal.pdf', bbox_inches='tight', dpi=300)
-
-fig = drvi.utils.pl.plot_latent_dims_in_umap(embed, directional=False, show=False)
-fig.savefig(proj_dir / 'plots' / 'immune_analysis_v3' / f'drvi_red_blue_umaps.pdf', bbox_inches='tight', dpi=300)
-
-fig = drvi.utils.pl.show_top_differential_vars(traverse_adata, key="combined_score", score_threshold=0.0, show=False, ncols=6,)
-fig.savefig(proj_dir / 'plots' / 'immune_analysis_v3' / f'interpretability_all.pdf', bbox_inches='tight', dpi=300)
-
-
-
-embed.var.iloc[[23, 31, 9, 11, 4]]
-
-fig = drvi.utils.pl.plot_latent_dims_in_umap(embed, directional=True, ncols=3, show=False, wspace=0.1, hspace=0.25, color_bar_rescale_ratio=0.95,
-                                             dim_subset=['DR 17-', 'DR 19-', 'DR 26+', 'DR 21+', 'DR 16-'])
-fig.savefig(proj_dir / 'plots' / 'immune_analysis_v3' / f'drvi_interesting_latents_on_umap.pdf', bbox_inches='tight', dpi=300)
-plt.show()
-
-fig = drvi.utils.pl.show_top_differential_vars(traverse_adata, key="combined_score", score_threshold=0.0, show=False,
-                                               dim_subset=['DR 17-', 'DR 19-', 'DR 26+', 'DR 21+', 'DR 16-'])
-fig.savefig(proj_dir / 'plots' / 'immune_analysis_v3' / f'drvi_interesting_latents_interpretability.pdf', bbox_inches='tight', dpi=300)
-plt.show()
-
-
-
-fig = drvi.utils.pl.show_top_differential_vars(traverse_adata, key="combined_score", score_threshold=0.0, n_top_genes=20,
-                                               dim_subset=['DR 26+'])
-
-fig = drvi.utils.pl.plot_relevant_genes_on_umap(adata, embed, traverse_adata, "combined_score", score_threshold=0.0, n_top_genes=20,
-                                                dim_subset=['DR 26+'])
-
-# ## Pair plots
-
-
-# +
-
-
-def save_fn(fig, dim_i, dim_j, original_col):
-    dir_name = proj_dir / 'plots' / 'immune_analysis_v3'
-    dir_name.mkdir(parents=True, exist_ok=True)
-    fig.savefig(dir_name / f'fig1_joint_plot_{original_col}_{dim_i}_{dim_j}.pdf', bbox_inches='tight', dpi=300)
-
-def pp_fn(g):
-    g.ax_marg_x.set_xlim(-2, 6)
-    g.ax_marg_y.set_ylim(-6, 2)
-    g.ax_marg_x.remove()
-    g.ax_marg_y.remove()
-    g.ax_joint.get_legend().remove()
-    text = g.ax_joint.xaxis.get_label().get_text()
-    if text == 'Dim 12':
-        text = 'DR 21'
-    g.ax_joint.text(0.82, 0.03, text, size=15, ha='left', color='black', rotation=0, transform=g.ax_joint.transAxes)
-    text =  g.ax_joint.yaxis.get_label().get_text()
-    if text == 'Dim 5':
-        text = 'DR 16'
-    g.ax_joint.text(0.03, 0.85, text, size=15, ha='left', color='black', rotation=90, transform=g.ax_joint.transAxes)
-    plt.xlabel('', axes=g.ax_joint)
-    plt.ylabel('', axes=g.ax_joint)
-
-set_font_in_rc_params()
-plot_per_latent_scatter(embed, [cell_type_key], col_mapping, xy_limit=5.5, dimensions=[[11, 4]], s=10, alpha=1, plot_height=5.,
-                        save_fn=save_fn, pp_fn=pp_fn, zero_lines=True)
-plt.rcParams.update(original_params)
-# -
-
-
-
-
-
-
-# # Remove confounding dim
-
-embed = embeds['DRVI']
-model = drvi.model.DRVI.load(RUNS_TO_LOAD['DRVI'] / 'model.pt', adata, prefix='v_0_1_0_')
-drvi.utils.tl.set_latent_dimension_stats(model, embed)
-
-# DR 26 is stress response to dissociation
-
-# +
-embed_save_address = RUNS_TO_LOAD['DRVI'] / 'embed_without_dissociation_resp_dim.h5ad'
-
-if embed_save_address.exists():
-    embed_keep_vars = sc.read_h5ad(embed_save_address)
-else:
-    embed_keep_vars = embed[:, ~(embed.var['title'].isin(['DR 26']))].copy()
-
-    sc.pp.neighbors(embed_keep_vars, n_neighbors=10, use_rep="X", n_pcs=embed_keep_vars.X.shape[1])
-    sc.tl.umap(embed_keep_vars, spread=1.0, min_dist=0.5, random_state=123)
-    sc.pp.pca(embed_keep_vars)
-
-    embed_keep_vars.write(embed_save_address)
-
-embed_keep_vars.shape
-# -
-
-col = cell_type_key
-unique_values = list(sorted(list(embed_keep_vars.obs[col].astype(str).unique())))
-palette = dict(zip(unique_values, cat_20_pallete))
-fig = sc.pl.umap(embed_keep_vars, color=col, 
-                 palette = palette, 
-                 show=False, frameon=False, title='', 
-                 legend_loc='right margin',
-                 colorbar_loc=None,
-                 return_fig=True)
-fig.savefig(proj_dir / 'plots' / 'immune_analysis_v3' / f'drvi_without_dissociation_resp_dim_umap_{col}.pdf', bbox_inches='tight', dpi=300)
-plt.show()
-
-col = condition_key
-fig = sc.pl.umap(embed_keep_vars, color=col, 
-                 show=False, frameon=False, title='', 
-                 legend_loc='right margin',
-                 colorbar_loc=None,
-                 return_fig=True)
-fig.savefig(proj_dir / 'plots' / 'immune_analysis_v3' / f'drvi_without_dissociation_resp_dim_umap_{col}.pdf', bbox_inches='tight', dpi=300)
-plt.show()
-
-
-
-adata.obsm['DRVI-pruned'] = embed_keep_vars[adata.obs.index].X
-
-# +
-scib_metrics_save_path = RUNS_TO_LOAD['DRVI'] / 'scib_metrics_without_dissociation_resp_dim.csv'
-bench = Benchmarker(adata, condition_key, cell_type_key, embedding_obsm_keys=['DRVI-pruned'])
-if scib_metrics_save_path.exists():
-    bench._results = pd.read_csv(scib_metrics_save_path, index_col=0)
-else:
-    bench.benchmark()
-    bench._results.to_csv(scib_metrics_save_path)
-
-scib_results_drvi_pruned = bench._results
-print(scib_results_drvi_pruned)
-bench.plot_results_table(min_max_scale=False, show=True)
-
-# +
-methods_to_plot = [
-    "DRVI-pruned", "DRVI", "DRVI-IK", "scVI", 
-    # "TCVAE-opt", "MICHIGAN-opt", "PCA", "ICA", "MOFA"
-]
-
-results = {}
-for method_name, run_path in RUNS_TO_LOAD.items():
-    if str(run_path).endswith(".h5ad"):
-        scib_metrics_save_path = str(run_path)[:-len(".h5ad")] + '_scib_metrics.csv'
-    else:
-        scib_metrics_save_path = run_path / 'scib_metrics.csv'
-    print(f"SCIB for {method_name} already calculated.")
-    results[method_name] = pd.read_csv(scib_metrics_save_path, index_col=0)
-    results[method_name].columns = [method_name] + list(results[method_name].columns[1:])
-results['DRVI-pruned'] = scib_results_drvi_pruned
-
-results_prety = {}
-for method_name, result_df in results.items():
-    if method_name not in methods_to_plot:
-        continue
-    assert result_df.columns[0] == method_name
-    result_df.rename(columns={method_name: pretify_method_name(method_name)}, inplace=True)
-    results_prety[pretify_method_name(method_name)] = result_df
-
-results = results_prety
-bench = Benchmarker(adata, condition_key, cell_type_key, embedding_obsm_keys=results.keys())
-any_result = results[list(results.keys())[0]]
-bench._results = pd.concat([result_df.iloc[:, 0].fillna(0.) for method_name, result_df in results.items()] + [any_result[['Metric Type']]], axis=1, verify_integrity=True)
-bench.plot_results_table(min_max_scale=False, show=True, 
-                         save_dir=proj_dir / 'plots' / 'immune_analysis_v3')
-shutil.move(proj_dir / 'plots' / 'immune_analysis_v3' / 'scib_results.svg', 
-            proj_dir / 'plots' / 'immune_analysis_v3' / f'eval_integration_after_pruning_scib.svg')
-
-# -
-
-
-
-
 
 
 # # Heatmaps for all models
@@ -403,7 +157,7 @@ metric_results_pkl_address = proj_dir / 'results' / f'eval_disentanglement_fine_
 with open(metric_results_pkl_address, 'rb') as f:
     metric_results = pickle.load(f)
 
-embed_subset = drvi.utils.pl.make_balanced_subsample(embed_drvi, cell_type_key, min_count=20)
+embed_subset = drvi.utils.pl.make_balanced_subsample(embeds['DRVI'], cell_type_key, min_count=20)
 unique_plot_cts = [
     'CD4+ T cells',
     'CD8+ T cells',
@@ -475,7 +229,227 @@ for method_name, embed in embeds.items():
     ax.set_ylabel('')
     ax.text(-0.31, 0.97, pretify_method_name(method_name), size=12, ha='left', weight='bold', color='black', rotation=0, transform=ax.transAxes)
 
-    plt.savefig(proj_dir / "plots" / "immune_analysis_v3" / f"ct_vs_dim_heatmap_rotated_{method_name}.pdf", bbox_inches='tight')
+    plt.savefig(output_dir / f"ct_vs_dim_heatmap_rotated_{method_name}.pdf", bbox_inches='tight')
     plt.show()
+
+
+
+
+
+# ## DRVI
+
+
+
+embed_drvi = embeds['DRVI']
+model_drvi = drvi.model.DRVI.load(RUNS_TO_LOAD['DRVI'] / 'model.pt', adata, prefix='v_0_1_0_')
+adata.obsm['X_umap_drvi'] = embed_drvi[adata.obs.index].obsm['X_umap']
+
+# +
+col = cell_type_key
+unique_values = list(sorted(list(embed.obs[col].astype(str).unique())))
+palette = dict(zip(unique_values, cat_20_pallete))
+fig = sc.pl.umap(embed_drvi, color=col, 
+                 palette = palette, 
+                 show=False, frameon=False, title='', 
+                 legend_loc='right margin',
+                 colorbar_loc=None,
+                 return_fig=True)
+
+
+plt.legend(ncol=1, bbox_to_anchor=(1.1, -.15))
+fig.savefig(output_dir / f'drvi_umap.pdf', bbox_inches='tight', dpi=300)
+# -
+
+
+
+
+# # Analysis pipeline
+
+model = model_drvi
+embed = embed_drvi
+
+drvi.utils.tl.set_latent_dimension_stats(model, embed)
+drvi.utils.pl.plot_latent_dimension_stats(embed, ncols=2)
+
+filename = RUNS_TO_LOAD['DRVI'] / "traverse_adata.h5ad"
+if not (filename).exists():
+    traverse_adata = drvi.utils.tl.traverse_latent(model, embed, n_samples=200, max_noise_std=0.2)
+    drvi.utils.tl.calculate_differential_vars(traverse_adata)
+    traverse_adata.write(filename)
+else:
+    traverse_adata = sc.read(filename)
+traverse_adata
+
+
+
+
+fig = drvi.utils.pl.plot_latent_dims_in_umap(embed, directional=False, show=False)
+fig.savefig(output_dir / f'drvi_red_blue_umaps.pdf', bbox_inches='tight', dpi=300)
+
+fig = drvi.utils.pl.show_top_differential_vars(traverse_adata, key="combined_score", score_threshold=0.0, show=False, ncols=6,)
+fig.savefig(output_dir / f'interpretability_all.pdf', bbox_inches='tight', dpi=300)
+
+
+
+# ## Visualize Example dimensions
+
+fig = drvi.utils.pl.plot_latent_dims_in_umap(embed, directional=True, ncols=3, show=False, wspace=0.1, hspace=0.25, color_bar_rescale_ratio=0.95,
+                                             dim_subset=['DR 17-', 'DR 19-', 'DR 26+', 'DR 21+', 'DR 16-'])
+fig.savefig(output_dir / f'drvi_interesting_latents_on_umap.pdf', bbox_inches='tight', dpi=300)
+plt.show()
+
+fig = drvi.utils.pl.show_top_differential_vars(traverse_adata, key="combined_score", score_threshold=0.0, show=False,
+                                               dim_subset=['DR 17-', 'DR 19-', 'DR 26+', 'DR 21+', 'DR 16-'])
+fig.savefig(output_dir / f'drvi_interesting_latents_interpretability.pdf', bbox_inches='tight', dpi=300)
+plt.show()
+
+
+
+# Rest of the relevant genes for DR 26+ relevant to dissociation stress response
+fig = drvi.utils.pl.show_top_differential_vars(traverse_adata, key="combined_score", score_threshold=0.0, n_top_genes=20,
+                                               dim_subset=['DR 26+'])
+
+fig = drvi.utils.pl.plot_relevant_genes_on_umap(adata, embed, traverse_adata, "combined_score", score_threshold=0.0, n_top_genes=20,
+                                                dim_subset=['DR 26+'])
+
+# ## Pair plot for lineage example
+
+
+# +
+def save_fn(fig, dim_i, dim_j, original_col):
+    dir_name = output_dir
+    dir_name.mkdir(parents=True, exist_ok=True)
+    fig.savefig(dir_name / f'fig1_joint_plot_{original_col}_{dim_i}_{dim_j}.pdf', bbox_inches='tight', dpi=300)
+
+def pp_fn(g):
+    g.ax_marg_x.set_xlim(-2, 6)
+    g.ax_marg_y.set_ylim(-6, 2)
+    g.ax_marg_x.remove()
+    g.ax_marg_y.remove()
+    g.ax_joint.get_legend().remove()
+    text = g.ax_joint.xaxis.get_label().get_text()
+    if text == 'Dim 12':
+        text = 'DR 21'
+    g.ax_joint.text(0.82, 0.03, text, size=15, ha='left', color='black', rotation=0, transform=g.ax_joint.transAxes)
+    text =  g.ax_joint.yaxis.get_label().get_text()
+    if text == 'Dim 5':
+        text = 'DR 16'
+    g.ax_joint.text(0.03, 0.85, text, size=15, ha='left', color='black', rotation=90, transform=g.ax_joint.transAxes)
+    plt.xlabel('', axes=g.ax_joint)
+    plt.ylabel('', axes=g.ax_joint)
+
+set_font_in_rc_params()
+plot_per_latent_scatter(embed, [cell_type_key], col_mapping, xy_limit=5.5, dimensions=[[11, 4]], s=10, alpha=1, plot_height=5.,
+                        save_fn=save_fn, pp_fn=pp_fn, zero_lines=True)
+plt.rcParams.update(original_params)
+# -
+
+
+
+
+
+
+# # Remove confounding dim
+
+embed = embeds['DRVI']
+model = drvi.model.DRVI.load(RUNS_TO_LOAD['DRVI'] / 'model.pt', adata, prefix='v_0_1_0_')
+drvi.utils.tl.set_latent_dimension_stats(model, embed)
+
+# DR 26 is stress response to dissociation
+
+# +
+embed_save_address = RUNS_TO_LOAD['DRVI'] / 'embed_without_dissociation_resp_dim.h5ad'
+
+if embed_save_address.exists():
+    embed_keep_vars = sc.read_h5ad(embed_save_address)
+else:
+    embed_keep_vars = embed[:, ~(embed.var['title'].isin(['DR 26']))].copy()
+
+    sc.pp.neighbors(embed_keep_vars, n_neighbors=10, use_rep="X", n_pcs=embed_keep_vars.X.shape[1])
+    sc.tl.umap(embed_keep_vars, spread=1.0, min_dist=0.5, random_state=123)
+    sc.pp.pca(embed_keep_vars)
+
+    embed_keep_vars.write(embed_save_address)
+
+embed_keep_vars.shape
+# -
+
+col = cell_type_key
+unique_values = list(sorted(list(embed_keep_vars.obs[col].astype(str).unique())))
+palette = dict(zip(unique_values, cat_20_pallete))
+fig = sc.pl.umap(embed_keep_vars, color=col, 
+                 palette = palette, 
+                 show=False, frameon=False, title='', 
+                 legend_loc='right margin',
+                 colorbar_loc=None,
+                 return_fig=True)
+fig.savefig(output_dir / f'drvi_without_dissociation_resp_dim_umap_{col}.pdf', bbox_inches='tight', dpi=300)
+plt.show()
+
+col = condition_key
+fig = sc.pl.umap(embed_keep_vars, color=col, 
+                 show=False, frameon=False, title='', 
+                 legend_loc='right margin',
+                 colorbar_loc=None,
+                 return_fig=True)
+fig.savefig(output_dir / f'drvi_without_dissociation_resp_dim_umap_{col}.pdf', bbox_inches='tight', dpi=300)
+plt.show()
+
+
+
+adata.obsm['DRVI-pruned'] = embed_keep_vars[adata.obs.index].X
+
+# +
+scib_metrics_save_path = RUNS_TO_LOAD['DRVI'] / 'scib_metrics_without_dissociation_resp_dim.csv'
+bench = Benchmarker(adata, condition_key, cell_type_key, embedding_obsm_keys=['DRVI-pruned'])
+if scib_metrics_save_path.exists():
+    bench._results = pd.read_csv(scib_metrics_save_path, index_col=0)
+else:
+    bench.benchmark()
+    bench._results.to_csv(scib_metrics_save_path)
+
+scib_results_drvi_pruned = bench._results
+print(scib_results_drvi_pruned)
+bench.plot_results_table(min_max_scale=False, show=True)
+
+# +
+methods_to_plot = [
+    "DRVI-pruned", "DRVI", "DRVI-IK", "scVI", 
+]
+
+results = {}
+for method_name, run_path in RUNS_TO_LOAD.items():
+    if str(run_path).endswith(".h5ad"):
+        scib_metrics_save_path = str(run_path)[:-len(".h5ad")] + '_scib_metrics.csv'
+    else:
+        scib_metrics_save_path = run_path / 'scib_metrics.csv'
+    print(f"SCIB for {method_name} already calculated.")
+    results[method_name] = pd.read_csv(scib_metrics_save_path, index_col=0)
+    results[method_name].columns = [method_name] + list(results[method_name].columns[1:])
+results['DRVI-pruned'] = scib_results_drvi_pruned
+
+results_prety = {}
+for method_name, result_df in results.items():
+    if method_name not in methods_to_plot:
+        continue
+    assert result_df.columns[0] == method_name
+    result_df.rename(columns={method_name: pretify_method_name(method_name)}, inplace=True)
+    results_prety[pretify_method_name(method_name)] = result_df
+
+results = results_prety
+bench = Benchmarker(adata, condition_key, cell_type_key, embedding_obsm_keys=results.keys())
+any_result = results[list(results.keys())[0]]
+bench._results = pd.concat([result_df.iloc[:, 0].fillna(0.) for method_name, result_df in results.items()] + [any_result[['Metric Type']]], axis=1, verify_integrity=True)
+bench.plot_results_table(min_max_scale=False, show=True, 
+                         save_dir=output_dir)
+shutil.move(output_dir / 'scib_results.svg', 
+            output_dir / f'eval_integration_after_pruning_scib.svg')
+
+# -
+
+
+
+
+
 
 

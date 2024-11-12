@@ -8,9 +8,9 @@
 #       format_version: '1.5'
 #       jupytext_version: 1.15.2
 #   kernelspec:
-#     display_name: drvi
+#     display_name: drvi-repr
 #     language: python
-#     name: drvi
+#     name: drvi-repr
 # ---
 
 # # Imports
@@ -18,15 +18,7 @@
 # %load_ext autoreload
 # %autoreload 2
 
-# +
 import os
-
-import scanpy as sc
-
-from matplotlib.pyplot import rcParams
-import matplotlib.pyplot as plt
-import seaborn as sns
-# -
 
 import warnings
 # warnings.filterwarnings(action='once')
@@ -37,33 +29,19 @@ import os
 import sys
 import argparse
 import shutil
-import pickle
 
-import anndata as ad
 import scanpy as sc
-import pickle as pkl
 import pandas as pd
-from scipy.sparse import csr_matrix, find
 import numpy as np
-from sklearn.preprocessing import minmax_scale
-from scipy.stats import entropy
-from sklearn.cluster import MiniBatchKMeans
 from pathlib import Path
-import gc
 
-from matplotlib.pyplot import rcParams
-import matplotlib.pyplot as plt
-import seaborn as sns
 from scib_metrics.benchmark import Benchmarker
 
-from drvi.utils.metrics import (most_similar_averaging_score, latent_matching_score, most_similar_gap_score,
-    nn_alignment_score, local_mutual_info_score, spearman_correlataion_score)
 from drvi_notebooks.utils.data.adata_plot_pp import make_balanced_subsample
 from drvi_notebooks.utils.data.data_configs import get_data_info
 from drvi_notebooks.utils.run_info import get_run_info_for_dataset
 from drvi_notebooks.utils.method_info import pretify_method_name
 from drvi_notebooks.utils.latent import set_optimal_ordering
-from drvi_notebooks.utils.plotting import plot_per_latent_scatter, scatter_plot_per_latent
 # -
 sc.set_figure_params(vector_friendly=True, dpi_save=300)
 
@@ -79,7 +57,7 @@ parser.add_argument('--run-name', type=str)
 
 interactive = False
 if hasattr(sys, 'ps1'):
-    args = parser.parse_args("--run-name hlca".split(" "))
+    args = parser.parse_args("--run-name immune_hvg".split(" "))
     interactive = True
 else:
     args = parser.parse_args()
@@ -104,8 +82,6 @@ if run_name.endswith("_ablation"):
     real_run_name = run_name[:-len("_ablation")]
 if run_name in ['immune_all_hbw_ablation']:
     real_run_name = 'immune_all'
-if run_name in ['immune_hvg_scvi_ablation']:
-    real_run_name = 'immune_hvg'
 run_version = '4.3'
 run_path = os.path.expanduser('~/workspace/train_logs/models')
 

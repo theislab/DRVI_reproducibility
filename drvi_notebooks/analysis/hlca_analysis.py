@@ -8,9 +8,9 @@
 #       format_version: '1.5'
 #       jupytext_version: 1.15.2
 #   kernelspec:
-#     display_name: drvi
+#     display_name: drvi-repr
 #     language: python
-#     name: drvi
+#     name: drvi-repr
 # ---
 
 # # Imports
@@ -20,12 +20,7 @@
 
 # +
 import os
-import collections
 
-import scanpy as sc
-import rapids_singlecell as rsc
-
-from matplotlib.pyplot import rcParams
 import matplotlib.pyplot as plt
 import seaborn as sns
 # -
@@ -36,36 +31,20 @@ warnings.filterwarnings('ignore')
 
 # +
 import os
-import sys
-import argparse
 import shutil
 import pickle
 
-import anndata as ad
 import scanpy as sc
-import pickle as pkl
 import pandas as pd
-from scipy.sparse import csr_matrix, find
 import numpy as np
-from sklearn.preprocessing import minmax_scale
-from scipy.stats import entropy
-from sklearn.cluster import MiniBatchKMeans
 from pathlib import Path
-import gc
 
-from matplotlib.pyplot import rcParams
-import matplotlib.pyplot as plt
-import seaborn as sns
 from scib_metrics.benchmark import Benchmarker
 
-from drvi.utils.metrics import (most_similar_averaging_score, latent_matching_score, 
-    nn_alignment_score, local_mutual_info_score, spearman_correlataion_score)
-from drvi.utils.notebooks import plot_latent_dims_in_umap
-from drvi_notebooks.utils.data.adata_plot_pp import make_balanced_subsample
+import drvi
 from drvi_notebooks.utils.data.data_configs import get_data_info
-from drvi_notebooks.utils.latent import set_optimal_ordering
-from drvi_notebooks.utils.plotting import plot_per_latent_scatter, scatter_plot_per_latent, saturated_red_blue_cmap, saturated_red_cmap, saturated_red_grey_cmap, saturated_sky_cmap, saturated_just_sky_cmap
-
+from drvi_notebooks.utils.run_info import get_run_info_for_dataset
+from drvi_notebooks.utils.method_info import pretify_method_name
 
 from gprofiler import GProfiler
 # -
@@ -77,13 +56,16 @@ sc.set_figure_params(vector_friendly=True, dpi_save=300, figsize=(6,6))
 # # Config
 
 cwd = os.getcwd()
-cwd
+
+logs_dir = Path(os.path.expanduser('~/workspace/train_logs'))
+logs_dir
 
 proj_dir = Path(cwd).parent.parent
 proj_dir
 
-logs_dir = Path(os.path.expanduser('~/workspace/train_logs'))
-logs_dir
+output_dir = proj_dir / 'plots' / 'hlca_analysis'
+output_dir.mkdir(parents=True, exist_ok=True)
+output_dir
 
 # +
 run_name = 'hlca'
@@ -115,25 +97,8 @@ wong_pallete = [
 ]
 cat_100_pallete = sc.plotting.palettes.godsnot_102
 
-
-
 # ## Utils
 
-# +
-def _m1(l):
-    if isinstance(l, list):
-        if isinstance(l[0], list):
-            return [[x - 1 for x in y] for y in l]
-        return [x - 1 for x in l]
-    return l - 1
-
-def _p1(l):
-    if isinstance(l, list):
-        if isinstance(l[0], list):
-            return [[x + 1 for x in y] for y in l]
-        return [x + 1 for x in l]
-    return l + 1
-# -
 
 
 
@@ -155,2120 +120,171 @@ embeds = {}
 random_order = None
 for method_name, run_path in RUNS_TO_LOAD.items():
     print(method_name)
-    embed = sc.read(run_path / 'latent.h5ad')
+    if str(run_path).endswith(".h5ad"):
+        embed = sc.read(run_path)
+    else:
+        embed = sc.read(run_path / 'latent.h5ad')
     pp_function(embed)
-    set_optimal_ordering(embed, key_added='optimal_var_order', metric='euclidean+')    
     if random_order is None:
         random_order = embed.obs.sample(frac=1.).index
     embed = embed[random_order].copy()
     embeds[method_name] = embed
 
-adata = sc.read(os.path.expanduser("~/data/HLCA/hlca_core_hvg.h5ad"))
+adata = sc.read(data_path)
 exp_plot_pp(adata)
 adata
 
 
 
-len(adata.obs[cell_type_key].unique())
-
-condition_key, len(adata.obs[condition_key].unique())
-
-len(adata.obs['sample'].unique())
-
-len(adata.obs['dataset'].unique())
-
-adata.n_obs
-
-
-
-# # General plots
-
-# +
-size = 3
-
-for _, col in enumerate(plot_columns):
-    fig,axs=plt.subplots(1, len(embeds),
-                     figsize=(len(embeds) * size, 1 * size),
-                     sharey='row', squeeze=False)
-    j = 0
-    for i, (method_name, embed) in enumerate(embeds.items()):
-    
-        pos = (-0.1, 0.5)
-        
-        ax = axs[j, i]
-        unique_values = list(sorted(list(embed.obs[col].astype(str).unique())))
-        # if len(unique_values) <= 8:
-        #     palette = dict(zip(unique_values, wong_pallete))
-        if len(unique_values) <= 10:
-            palette = dict(zip(unique_values, cat_10_pallete))
-        elif len(unique_values) <= 20:
-            palette = dict(zip(unique_values, cat_20_pallete))
-        elif len(unique_values) <= 102:
-            palette = dict(zip(unique_values, cat_100_pallete))
-        else:
-            palette = None
-        sc.pl.umap(embed, color=col, 
-                   palette=palette, 
-                   ax=ax, show=False, frameon=False, title='' if j != 0 else method_name, 
-                   legend_loc='none' if i != len(embeds) - 1 else 'right margin',
-                   colorbar_loc=None if i != len(embeds) - 1 else 'right')
-        if i == 0:
-            ax.annotate(col_mapping[col], zorder=100, fontsize=12,
-                        xy=pos, xytext=pos, textcoords='axes fraction', rotation='vertical', va='center', ha='center')
-
-    plt.subplots_adjust(left=0.1,
-                        bottom=0.05,
-                        right=0.95,
-                        top=0.95,
-                        wspace=0.1,
-                        hspace=0.1)    
-# -
 
 
 
 
 
+# # Heatmaps
 
+noise_condition = 'no_noise'
+metric_results_pkl_address = proj_dir / 'results' / f'eval_disentanglement_fine_metric_results_{run_name}_{noise_condition}.pkl'
+with open(metric_results_pkl_address, 'rb') as f:
+    metric_results = pickle.load(f)
+
+unique_plot_cts = ["CD4 T cells", "CD8 T cells", "T cells proliferating", "NK cells", "AT2", "AT2 proliferating", "AT1", "AT0", "pre-TB secretory", "Goblet (nasal)", 
+                   "Club (non-nasal)", "Goblet (bronchial)", "Goblet (subsegmental)", "Club (nasal)", "Tuft", "SMG serous (bronchial)", "SMG serous (nasal)", 
+                   "SMG duct", "SMG mucous", "EC arterial", "EC venous systemic", "EC venous pulmonary", "EC general capillary", "Classical monocytes", 
+                   "Ionocyte", "Neuroendocrine", "Plasma cells", "Deuterosomal", "Multiciliated (nasal)", "Multiciliated (non-nasal)", "B cells", 
+                   "Plasmacytoid DCs", "Migratory DCs", "DC1", "DC2", "Interstitial Mph perivascular", "Hematopoietic stem cells", "Mast cells", 
+                   "Subpleural fibroblasts", "Mesothelium", "Peribronchial fibroblasts", "Adventitial fibroblasts", "Alveolar fibroblasts", 
+                   "Myofibroblasts", "Smooth muscle", "Pericytes", "SM activated stress response", "Smooth muscle FAM83D+", "Hillock-like", 
+                   "Lymphatic EC mature", "EC aerocyte capillary", "Lymphatic EC proliferating", "Lymphatic EC differentiating", "Non-classical monocytes", "Basal resting", 
+                   "Alveolar macrophages", "Monocyte-derived Mph", "Alveolar Mph CCL3+", "Alveolar Mph MT-positive", "Alveolar Mph proliferating", "Suprabasal"]
+
+embed = embeds['DRVI'].copy()  # or any other emb. no matter
+embed_subset = drvi.utils.pl.make_balanced_subsample(embed, cell_type_key, min_count=20)
+embed_subset.obs[cell_type_key] = pd.Categorical(embed_subset.obs[cell_type_key], unique_plot_cts)
+embed_subset = embed_subset[embed_subset.obs.sort_values(cell_type_key).index].copy()
+
+for method_name, embed in embeds.items():
+    print(method_name)
+    k = cell_type_key
+    unique_values = list(sorted(list(embed.obs[k].astype(str).unique())))
+    palette = dict(zip(unique_values, cat_100_pallete))
+    method_embed_subset = embed[embed_subset.obs.index].copy()
+    method_embed_subset.obs[cell_type_key] = pd.Categorical(method_embed_subset.obs[cell_type_key], unique_plot_cts)
+    method_embed_subset = method_embed_subset[np.argsort(method_embed_subset.obs[cell_type_key].cat.codes)]
+    method_embed_subset.uns[k + "_colors"] = 'black'
+    sim_matrix = metric_results[method_name]['Mutual Info Score'][unique_plot_cts].values
+    vars = method_embed_subset.var
+    vars['van'] = ~ (method_embed_subset.X.max(axis=0, keepdims=True) > method_embed_subset.X.max() / 10).flatten()
+    sim_matrix = sim_matrix * ~vars['van'].values[:, np.newaxis]
+    vars['plot_order'] = np.hstack([sim_matrix, sim_matrix[:, 0:1] * 0 + 0.3]).argmax(axis=1).tolist()
+    if 'title' not in vars.columns:
+        vars['title'] = np.char.add('Dim ', (1 + np.arange(method_embed_subset.n_vars)).astype(str))
+        vars['order'] = np.arange(method_embed_subset.n_vars)
+    vars['not_interesting'] = np.logical_or(vars['van'], vars['plot_order']==sim_matrix.shape[1])
+    vars = pd.concat([vars.query('~not_interesting').sort_values('plot_order'), vars.query('not_interesting').sort_values('order')])
+    fig = sc.pl.heatmap(
+        method_embed_subset,
+        vars['title'],
+        k,
+        gene_symbols = 'title',
+        layer=None,
+        # var_group_positions=[(0,30), (31, 51), (52, 63)],
+        # var_group_labels=['Cell-type indicator', 'Biological Process', 'Vanished'],
+        # var_group_rotation=0,
+        figsize=(10, 8),
+        show_gene_labels=True,
+        dendrogram=False,
+        vcenter=0,
+        cmap=drvi.utils.pl.cmap.saturated_red_blue_cmap, show=False,
+        swap_axes=True,
+    )
+    # fig['groupby_ax'].set_xlabel('Finest level annotation')
+    fig['groupby_ax'].set_xlabel('')
+    fig['groupby_ax'].get_images()[0].remove()
+    pos = fig['groupby_ax'].get_position()
+    pos.y0 += 0.015
+    fig['groupby_ax'].set_position(pos)
+    fig['heatmap_ax'].yaxis.tick_right()
+    cbar = fig['heatmap_ax'].figure.get_axes()[-1]
+    pos = cbar.get_position()
+    # cbar.set_position([1., 0.77, 0.01, 0.13])
+    cbar.set_position([.95, 0.001, 0.01, 0.14])
+
+    ax = fig['heatmap_ax']
+    ax.set_ylabel('')
+    ax.text(0.01, 1.01, pretify_method_name(method_name), size=12, ha='left', weight='bold', color='black', rotation=0, transform=ax.transAxes)
+
+    plt.savefig(output_dir / f"ct_vs_dim_heatmap_rotated_{method_name}.pdf", bbox_inches='tight')
+    plt.show()
 
 
 
 # # DRVI analysis
 
-embed_drvi = embeds['DRVI']
-adata.obsm['X_umap_drvi'] = embed_drvi[adata.obs.index].obsm['X_umap']
-
-MAX_CELLS_TO_PLOT = 50_000
-plot_latent_dims_in_umap(embed_drvi, max_cells_to_plot=MAX_CELLS_TO_PLOT, optimal_order=True, vcenter=0, cmap='RdBu_r')
-
-for col in ['ann_level_1', 'ann_level_2', 'ann_level_3', 'ann_finest_level']:
-    print(col, embed_drvi.obs[col].unique().to_list())
-
-# + active=""
-# 29+: T cells / CD4+ T cells
-# 29-: -small
-# 12+: -small
-# 12-: Macrophages
-# 44+: AT2
-# 44-: -small
-# 54+: -small
-# 54-: NK cells (+ little expression on CD8 and Prolif T cells)
-# 19+: EC subtypes
-# 19-: /TODO
-# 52+: Multiciliated lineage
-# 52-: -small
-# 32+: /TODO 
-# 32-: /TODO (a subset of hilloc like)
-# 61+: /TODO
-# 61-: /TODO
-# 36+: /TODO
-# 36-: /TODO
-# 3+: /TODO
-# 3-: Ionocytes + Neuroendocrine
-# 34+: -small
-# 34-: /TODO (Goblet + Club + SMG duct + ...)
-# 6+: -small
-# 6-: /TODO (Goblet + Club + SMG mucous + ...)
-# 18+: /TODO
-# 18-: -small
-# 25+: [Share Process] Proliferation
-# 25-: -small
-# 23+: Mast Cells + HPSC
-# 23-: -small
-# 42+: B Cells + Plasmacytoids DCs + HPSC + fraction of plasma cells
-# 42-: -small
-# 38+: -small
-# 38-: /TODO
-# 30+: /TODO
-# 30-: -small
-# 1+: /TODO (also some hillock-l-ke)
-# 1-: -small
-# 35+: Plasma cells
-# 35-: -small
-# 14+: /TODO
-# 14-: -small
-# 5+: -small
-# 5-: /TODO
-# 8+: Deuterosomal
-# 8-: -small
-# 64+: Mesothelium + Suprabasal fibroblasts
-# 64-: -small
-# 21+:  -vanished
-# 21-: -vanished
-# 28+: -vanished
-# 28-: -vanished
-# 48+: -vanished
-# 48-: -vanished
-# 39+: -vanished
-# 39-: -vanished
-# 41+: -vanished
-# 41-: -vanished
-# 2+: -vanished
-# 2-: -vanished
-# 15+: -vanished
-# 15-: -vanished
-# 22+: -vanished
-# 22-: -vanished
-# 62+: -vanished
-# 62-: -vanished
-# 58+: -vanished
-# 58-: -vanished
-# 43+: -vanished
-# 43-: -vanished
-# 55+: -vanished
-# 55-: -vanished
-# 45+: -small
-# 45-: [shared process] /TODO
-# 27+: [shared process] /TODO
-# 27-: -small
-# 24+: /TODO (Hillock-like + Suprabasal subprocess)
-# 24-: -small
-# 20+: SMG serous (nasal + bronchial)
-# 20-: Tuft + little expression on other CTs
-# 26+: -small
-# 26-: /TODO
-# 4+: -small
-# 4-: /TODO (subprocess in Mph)
-# 51+: Migratory DCs
-# 51-: -small
-# 46+: AT0 + pre-TB secretery
-# 46-: -small
-# 13+: AT0 + AT2 proliferating
-# 13-: -small
-# 31+: /TODO
-# 31-: -small
-# 37+: /TODO (already know CCL3+)
-# 37-: -small
-# 17+: -small
-# 17-: Smooth Muscle (+ little expression on pericytes + Myofibroblasts)
-# 49+: /TODO
-# 49-: Hillock-like (+ some others)
-# 10+: /TODO
-# 10-: DC1
-# 16+: /TODO
-# 16-: /TODO
-# 40+: -small
-# 40-: /TODO
-# 7+: AT1
-# 7-: -small
-# 33+: -small
-# 33-: Lymphatic EC (+ little expression of EC aerocyte capilliary)
-# 50+: /TODO (somehow related to Interstitial Mph perivascular)
-# 50-: -small
-# 63+: /TODO (maybe MT+ since it covers mostly Alveolar Mph MT-positive)
-# 63-: -small
-# 57+: Fibroblasts (- adventitial fibroblasts)
-# 57-: -small
-# 11+: /TODO
-# 11-: /TODO (sparsly expressed on Alveolat Mphs)
-# 56+: /TODO
-# 56-: Non-classical monocytes (and little expression on monocytes)
-# 60+: SMG mucous
-# 60-: EC general Capillary (+ little expression on other ECs)
-# 53+: /TODO (generally small values)
-# 53-: Basal restling (KRT17, KRT15, BCAM genes)
-# 59+: /TODO (somehow covers SMG duct)
-# 59-: Classical monocytes (+ little expression on other CTs)
-# 9+: /TODO
-# 9-: Peribronchial fibroblasts + Advential fibroblasts + Subpleural fibroblasts (+ little expression on other fibroblasts and Mesothelium)
-# 47+: DC2 (+ expression on other DCs and Interstitial Mph perivascular + HPSC)
-# 47-: /TODO
-
-# + active=""
-# 29+: T cells / CD4+ T cells
-# 12-: Macrophages
-# 44+: AT2
-# 54-: NK cells (+ little expression on CD8 and Prolif T cells)
-# 19+: EC subtypes
-# 52+: Multiciliated lineage
-# 3-: Ionocytes + Neuroendocrine
-# 25+: [Share Process] Proliferation
-# 23+: Mast Cells + HPSC
-# 42+: B Cells + Plasmacytoids DCs + HPSC + fraction of plasma cells
-# 35+: Plasma cells
-# 8+: Deuterosomal
-# 64+: Mesothelium + Suprabasal fibroblasts
-# 20+: SMG serous (nasal + bronchial)
-# 20-: Tuft + little expression on other CTs
-# 51+: Migratory DCs
-# 46+: AT0 + pre-TB secretery
-# 13+: AT0 + AT2 proliferating
-# 17-: Smooth Muscle (+ little expression on pericytes + Myofibroblasts)
-# 49-: Hillock-like (+ some others)
-# 10-: DC1
-# 7+: AT1
-# 33-: Lymphatic EC (+ little expression of EC aerocyte capilliary)
-# 57+: Fibroblasts (- adventitial fibroblasts)
-# 56-: Non-classical monocytes (and little expression on monocytes)
-# 60+: SMG mucous
-# 60-: EC general Capillary (+ little expression on other ECs)
-# 53-: Basal restling (KRT17, KRT15, BCAM genes)
-# 59-: Classical monocytes (+ little expression on other CTs)
-# 9-: Peribronchial fibroblasts + Advential fibroblasts + Subpleural fibroblasts (+ little expression on other fibroblasts and Mesothelium)
-# 47+: DC2 (+ expression on other DCs and Interstitial Mph perivascular + HPSC)
-#
-# 19-: Submucosal Gland (in level 2 annotations)
-# 32+: FOS, FOSB, JUN coexpression
-# 32-: Keratinization, Small proline-rich proteins (SPRP)
-# 61+: -small / noise
-# 61-: SCGB1A1 marker gene (covers parts of Club, Goblet, Deuterosomal, pre-TB secretory, Multiciliated cells)
-# 36+: TREM2 and C1Q complex 
-# 36-: C11orf96 and CRISPLD2 expression in Fibroblast lineage
-# 3+: EREG / Interlukin sugnaling
-# 34-: /TODO (Goblet + Club + SMG duct + ...)
-# 6-: Goblet cells + SMG mucous (little expression from Club + ...)
-# 18+: IL-17 signaling pathway / TNF signaling pathway
-# 38-: Interferon alpha/beta signaling
-# 30+: SAA and LNC2 (Maybe antibacterial response) -> limited to Multiciliated cells
-# 1+: S100 proteins
-# 14+: SAA and RARRES1 -> limited to epithelial cells
-# 5-: Hemoglobin metabolic process
-# 45-: ANKRD36C+ Goblet cells
-# 27+: Inflammation CXCL9, CXCL10, CXCL11 / GBP1, GBP4, GBP5 / IDO1 / ...
-# 24+: MMP10, MMP1, MMP13 (matrix metalloproteinases)
-# 26-: Some tumor supression genes: CLCA4, CSTA, CALML3, and LYPB3
-# 4-: IFI27+ macrophages
-# 31+: represents TNFRSF12A, ERRFI1, CCN1
-# 37+: MIP-1α/CCL3
-# 49+: -small
-# 10+: Multiciliated Lineage (shade towards DNAAF1)
-# 16+: /SOSO (some correlations with KRT14)
-# 16-: /SOSO (some correlations with SERPINB3)
-# 40-: /SOSO (some correlations with SPRR3, C15orf48)
-# 50+: Resident macrophages (RNASE1, STAB1, F13A1, FOLR2)
-# 63+: MT+ (stress response to metal ion)
-# 11+: Claudin-4 gene
-# 11-: /SOSO (low expression of some genes like S100A4, S100A8, S100A9)
-# 56+: CCL2+ blood cells
-# 53+: -small / noise
-# 59+: /SOSO (some correlations with KRT14, CLU)
-# 9+: MHC class II protein complex (HLA genes)
-# 47-: /SOSO (some correlations with very high expression of KRT19)
-#
-# 29-: -small
-# 12+: -small
-# 44-: -small
-# 54+: -small
-# 52-: -small
-# 34+: -small
-# 6+: -small
-# 18-: -small
-# 25-: -small
-# 23-: -small
-# 42-: -small
-# 38+: -small
-# 30-: -small
-# 1-: -small
-# 35-: -small
-# 14-: -small
-# 5+: -small
-# 8-: -small
-# 64-: -small
-# 45+: -small
-# 27-: -small
-# 24-: -small
-# 26+: -small
-# 4+: -small
-# 51-: -small
-# 46-: -small
-# 13-: -small
-# 31-: -small
-# 37-: -small
-# 17+: -small
-# 40+: -small
-# 7-: -small
-# 33+: -small
-# 50-: -small
-# 63-: -small
-# 57-: -small
-#
-# 21+:  -vanished
-# 21-: -vanished
-# 28+: -vanished
-# 28-: -vanished
-# 48+: -vanished
-# 48-: -vanished
-# 39+: -vanished
-# 39-: -vanished
-# 41+: -vanished
-# 41-: -vanished
-# 2+: -vanished
-# 2-: -vanished
-# 15+: -vanished
-# 15-: -vanished
-# 22+: -vanished
-# 22-: -vanished
-# 62+: -vanished
-# 62-: -vanished
-# 58+: -vanished
-# 58-: -vanished
-# 43+: -vanished
-# 43-: -vanished
-# 55+: -vanished
-# 55-: -vanished
-# -
-
-
-
-# ## Checking dims
-
-# ### dim 19-
-# result: Looks like "Submucosal Gland" in level-2 annotation
-
-dim = 19 - 1
-relevant_genes = ['SCGB3A1', 'DMBT1']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-sc.pl.violin(embed_drvi, [str(dim)], groupby="ann_level_2", rotation=45)
-sc.pl.umap(embed_drvi, color=['ann_level_2'], groups=['Submucosal Gland'])
-
-adata.obs['_drvi_low_dim_19'] = (0. + (embed_drvi[adata.obs.index].X[:, dim] < -1))
-adata.obs['_drvi_low_dim_19'] = adata.obs['_drvi_low_dim_19'].astype('category')
-sc.tl.rank_genes_groups(adata, '_drvi_low_dim_19', method='wilcoxon', key_added = "dim_19-_wilcoxon")
-sc.pl.rank_genes_groups(adata, n_genes=25, sharey=False, key="dim_19-_wilcoxon")
-
-relevant_genes = adata.uns['dim_19-_wilcoxon']['names']['1.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-
-
-
-
-# ### dim 32+-
-# result: 
-#  -  +: FOS, FOSB, JUN coexpression
-#  -  -: keratinization, Small proline-rich proteins (SPRP) (KRT13, KRT16, KRT24, KRT6B, SPRR1B, SPRR2A, SPRR2E, SPRR2D, KLK7, KLK10)
-
-dim = 32 - 1
-# # + direction
-relevant_genes = ['FOS', 'JUN', 'FOSB', 'EGR1', 'ATF3', 'HSPA1A', 'BTG2', 'GADD45B', 'HSPA1B', 'NR4A1', 'KLF2', 'MIR23AHG', 'HSPA6', 'KCNQ1OT1', 'GADD45G', 'BAG3', 'PLK2', 'DNAJB4', 'EGR2', 'ADM', 'ARC', 'RNU12_ENSG00000270022', 'SNAI1']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-# - direction
-dim = 32 - 1
-relevant_genes = ['KRT13', 'SPRR1B', 'SPRR2A', 'KRT16', 'LYPD3', 'KRT6B', 'SPRR2E', 'KRT24', 'SPRR2D', 'KLK10', 'SBSN', 'KLK7', 'CPA4', 'RHCG']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-adata_subset = adata[adata.obs['ann_level_2'] == 'Airway epithelium'].copy()
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata_subset.obs.index].X[:, dim] < -2))
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = adata_subset.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata_subset, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}n_wilcoxon")
-sc.pl.rank_genes_groups(adata_subset, n_genes=25, sharey=False, key=f"dim_{dim+1}n_wilcoxon")
-relevant_genes = adata_subset.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist() + adata_subset.uns[f'dim_{dim+1}n_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata_subset, 'X_umap_drvi', color=relevant_genes)
-
-plot_latent_dims_in_umap(embed_drvi, dims=[dim, 0], vcenter=0, cmap='RdBu_r')
-
-
-
-
-
-# ### dim 61+-
-# result: 
-#  -  +: -small / noise
-#  -  -: very aligned with SCGB1A1 gene (a club marker gene) and TMEM45A
-
-dim = 61 - 1
-# # + direction
-adata.obs['_drvi_high_dim_61'] = (0. + (embed_drvi[adata.obs.index].X[:, dim] > +1))
-adata.obs['_drvi_high_dim_61'] = adata.obs['_drvi_high_dim_61'].astype('category')
-sc.tl.rank_genes_groups(adata, '_drvi_high_dim_61', method='wilcoxon', key_added = "dim_61p_wilcoxon")
-sc.pl.rank_genes_groups(adata, n_genes=25, sharey=False, key="dim_61p_wilcoxon")
-relevant_genes = adata.uns['dim_61p_wilcoxon']['names']['1.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-# - direction
-relevant_genes = ['RPS4Y1', 'C1orf56', 'LINC00685', 'GPM6B', 'SCGB1A1', 'TMEM45A', 'KLK12']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-# - direction
-adata.obs['_drvi_low_dim_61'] = (0. + (embed_drvi[adata.obs.index].X[:, dim] < -1))
-adata.obs['_drvi_low_dim_61'] = adata.obs['_drvi_low_dim_61'].astype('category')
-sc.tl.rank_genes_groups(adata, '_drvi_low_dim_61', method='wilcoxon', key_added = "dim_61n_wilcoxon")
-sc.pl.rank_genes_groups(adata, n_genes=25, sharey=False, key="dim_61n_wilcoxon")
-relevant_genes = adata.uns['dim_61n_wilcoxon']['names']['1.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-sc.pl.umap(embed_drvi, color=[cell_type_key], 
-           groups=list(embed_drvi.obs[cell_type_key][embed_drvi.obs[cell_type_key].str.contains('Club|Goblet|Deuterosomal|pre-TB secretory|Multiciliated', regex=True)].unique()))
-
-
-
-# ### dim 36+-
-# result: 
-#  -  +: TREM2 and C1Q complex (check [1] and specially [2])
-#  -  -: C11orf96 ([3]) and CRISPLD2 (reduces proinflammatory mediators in lung. check [4], [5])
-#
-# [1] TREM2 receptor protects against complement-mediated synaptic loss by binding to complement C1q during neurodegeneration https://www.sciencedirect.com/science/article/pii/S107476132300273X
-# [2] The triggering receptor expressed on myeloid cells 2 inhibits complement component 1q effector mechanisms and exerts detrimental effects during pneumococcal pneumonia https://pubmed.ncbi.nlm.nih.gov/24945405/
-# [3] Molecular cloning, characterization, and functional analysis of the uncharacterized C11orf96 gene https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9086667/
-# [4] CRISPLD2 (LGL1) inhibits proinflammatory mediators in human fetal, adult, and COPD lung fibroblasts and epithelial cells https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5027350/
-# [5] CRISPLD2 attenuates pro-inflammatory cytokines production in HMGB1-stimulated monocytes and septic mice https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8205833/
-
-dim = 36 - 1
-# # + direction
-relevant_genes = ['C1QB', 'C1QA', 'C1QC', 'IGSF6', 'TREM2', 'TMEM176B', 'TMEM176A']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-# # + direction
-adata.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata.obs.index].X[:, dim] > +1))
-adata.obs[f'_drvi_high_dim_{dim+1}'] = adata.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}p_wilcoxon")
-sc.pl.rank_genes_groups(adata, n_genes=25, sharey=False, key=f"dim_{dim+1}p_wilcoxon")
-relevant_genes = adata.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-dim = 36 - 1
-# - direction
-relevant_genes = ['SOCS3', 'IL6', 'CDKN1A', 'RGS2', 'MYC', 'IRF1', 'C11orf96', 'RND3', 'NR4A2', 'GEM', 'ZNF331', 'CH25H', 'CRISPLD2', 'PHLDA1', 'ID4', 'ADAMTS4', 'RGS16', 'NR4A3', 'THAP2', 'PIM1', 'NABP1', 'PTX3', 'ANKRD37', 'ARL5B', 'LIF', 'ACKR3', 'HAS2']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-# - direction
-adata_subset = adata[adata.obs['ann_level_2'].isin(['Fibroblast lineage', 'Smooth muscle'])].copy()
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata_subset.obs.index].X[:, dim] < -2))
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = adata_subset.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata_subset, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}n_wilcoxon")
-sc.pl.rank_genes_groups(adata_subset, n_genes=25, sharey=False, key=f"dim_{dim+1}n_wilcoxon")
-relevant_genes = adata_subset.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist() + adata_subset.uns[f'dim_{dim+1}n_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata_subset, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=adata_subset.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist(), 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-# +
-df = pd.DataFrame({
-    **{g: adata_subset[:, g].X.A.flatten() 
-       for g in adata_subset.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist()}
-    ,
-    '- Dim 36': -embed_drvi[adata_subset.obs.index].X[:, dim].flatten()})
-
-for g in adata_subset.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist():
-    sns.scatterplot(data=df, x="- Dim 36", y=g, alpha=0.1, s=5, linewidth=0)
-    plt.show()
-# -
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=['SOCS3', 'IL6', 'C11orf96', 'CRISPLD2'], 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-
-
-# ### dim 3+
-# result: related to 1. EREG 2. Interlukin sugnaling (IL1B, IL1RN, PTGS2, VEGFA)
-# EREG is a ligand of epidermal growth factor receptor (EGFR) seen in tumor cells
-#
-# correlated genes: IL1B EREG PLAUR G0S2 THBS1 BCL2A1 IL1RN PDE4B PTGS2 NLRP3 PPIF INSIG1 VEGFA 
-#
-
-
-
-dim = 3 - 1
-# # + direction
-relevant_genes = ['IL1B', 'EREG', 'PLAUR', 'G0S2', 'THBS1', 'BCL2A1', 'OLR1', 'IL1RN', 'PDE4B', 'PTGS2', 'NLRP3', 'PPIF', 'INSIG1', 'VEGFA', 'MMP19', 'ZEB2', 'SERPINB9', 'LCP2', 'PHACTR1', 'THBD', 'MXD1', 'EHD1', 'PFKFB3', 'ATP2B1-AS1', 'AQP9', 'KYNU', 'ITGAX', 'PTPRE', 'MIR3945HG', 'ABCA1', 'IL10', 'RASGEF1B', 'LUCAT1', 'SPHK1', 'ZNF267', 'SLC7A5', 'ANPEP', 'POLR1F', 'SLC16A10', 'OTUD1', 'OSM', 'SEMA6B', 'TRAF1', 'GPR132']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-adata_subset = adata[adata.obs['ann_level_2'] == 'Myeloid'].copy()
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata_subset.obs.index].X[:, dim] > +2))
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = adata_subset.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata_subset, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}p_wilcoxon")
-sc.pl.rank_genes_groups(adata_subset, n_genes=25, sharey=False, key=f"dim_{dim+1}p_wilcoxon")
-relevant_genes = adata_subset.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist() + adata_subset.uns[f'dim_{dim+1}p_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata_subset, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=adata_subset.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist(), 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-
-
-# ### dim 34-, 6-
-# result: 
-# - 43-: TODO
-# - 6-: Goblet cells + SMG mucous (little expression from Club + ...) -> MSMB (main marker), MUC5AC
-
-plots = scatter_plot_per_latent(embed_drvi, 'qz_mean', plot_columns, xy_limit=5.5, dimensions=[33, 5], s=10)
-for col, plt in zip(plot_columns, plots):
-    plt.show()
-
-dim = 34 - 1
-# - direction
-relevant_genes = ['SLPI', 'WFDC2', 'BPIFA1', 'AGR2', 'VMO1', 'CXCL17', 'CXCL6', 'CYP2F1', 'AKR1C1']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-# - direction
-adata.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata.obs.index].X[:, dim] < -2))
-adata.obs[f'_drvi_high_dim_{dim+1}'] = adata.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}n_wilcoxon")
-sc.pl.rank_genes_groups(adata, n_genes=25, sharey=False, key=f"dim_{dim+1}n_wilcoxon")
-relevant_genes = adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist() + adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-sc.pl.umap(embed_drvi, color=['ann_level_3'], 
-           groups=list(embed_drvi.obs['ann_level_3'][embed_drvi.obs['ann_level_3'].str.contains('^Secretory', regex=True)].unique()))
-
-
-
-dim = 6 - 1
-# - direction
-relevant_genes = ['MSMB', 'BPIFB1', 'TFF3', 'MUC5AC', 'MUC5B', 'PIGR', 'FCGBP', 'TFF1', 'TSPAN8', 'GALNT6', 'CST1', 'SERPINB11']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-# - direction
-adata.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata.obs.index].X[:, dim] < -1))
-adata.obs[f'_drvi_high_dim_{dim+1}'] = adata.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}n_wilcoxon")
-sc.pl.rank_genes_groups(adata, n_genes=25, sharey=False, key=f"dim_{dim+1}n_wilcoxon")
-relevant_genes = adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist() + adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist(), 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-sc.pl.umap(embed_drvi, color=[cell_type_key], 
-           groups=list(embed_drvi.obs[cell_type_key][embed_drvi.obs[cell_type_key].str.contains('Goblet|SMG mucous|Multiciliated', regex=True)].unique()))
-
-
-
-
-
-
-
-# ### dim 18+
-# result: IL-17 signaling pathway / TNF signaling pathway
-
-
-
-dim = 18 - 1
-# # + direction
-relevant_genes = ['CXCL2', 'CCL20', 'CXCL8', 'CXCL1', 'CXCL3', 'SOD2', 'ICAM1', 'NCOA7', 'TNFAIP3', 'IER3', 'CSF3', 'NFKBIZ', 'BIRC3', 'TNFAIP2', 'RND1', 'MED24', 'SLC6A14', 'STEAP4', 'BMP2', 'TNIP3', 'ICAM4', 'CSF2', 'CYP3A5', 'IL17C']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=relevant_genes, 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-
-
-# ### dim 38-
-# results: Interferon alpha/beta signaling
-
-dim = 38 - 1
-relevant_genes = ['ISG15', 'IFITM3', 'IFI6', 'IFIT1', 'IFI44L', 'BST2', 'TNFSF13B', 'MX2', 'TNFSF10', 'ISG20', 'SAMD9', 'NEXN']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r', vmin=-3)
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=relevant_genes, 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-adata.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata.obs.index].X[:, dim] < -2))
-adata.obs[f'_drvi_high_dim_{dim+1}'] = adata.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}n_wilcoxon")
-sc.pl.rank_genes_groups(adata, n_genes=25, sharey=False, key=f"dim_{dim+1}n_wilcoxon")
-relevant_genes = adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist() + adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=relevant_genes, 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-
-
-# ### dim 30+
-# results: serum amyloid A (SAA) and LCN2 [1] (indicating Antibacterial response?)
-# [1] Cigarette Smoke Specifically Affects Small Airway Epithelial Cell Populations and Triggers the Expansion of Inflammatory and Squamous Differentiation Associated Basal Cells https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8305830/
-
-dim = 30 - 1
-relevant_genes = ['SAA1', 'SAA2', 'LCN2', 'CFB', 'DUOXA2']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=['SAA1', 'SAA2', 'LCN2'], 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-# # + direction
-adata.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata.obs.index].X[:, dim] > +1))
-adata.obs[f'_drvi_high_dim_{dim+1}'] = adata.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}p_wilcoxon")
-sc.pl.rank_genes_groups(adata, n_genes=25, sharey=False, key=f"dim_{dim+1}p_wilcoxon")
-relevant_genes = adata.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-
-
-# ### dim 1+
-# results: S100 proteins (S100A8, S100A9, LY6D, S100A14, S100A16)
-
-dim = 1 - 1
-relevant_genes = ['OLFM4', 'DEFA3', 'S100A7', 'CRCT1', 'DEFB4A', 'SPRR2F']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=['SAA1', 'SAA2', 'LCN2'], 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-# # + direction
-adata.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata.obs.index].X[:, dim] > +2))
-adata.obs[f'_drvi_high_dim_{dim+1}'] = adata.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}p_wilcoxon")
-sc.pl.rank_genes_groups(adata, n_genes=25, sharey=False, key=f"dim_{dim+1}p_wilcoxon")
-relevant_genes = adata.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist() + adata.uns[f'dim_{dim+1}p_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=adata.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist(), 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-plots = scatter_plot_per_latent(embed_drvi, 'qz_mean', plot_columns, xy_limit=5.5, dimensions=[[0, 48], [0, 31], [31, 48]], s=10)
-for col, plt in zip(plot_columns, plots):
-    plt.show()
-
-
-
-# ### dim 14+
-# results: RARRES1 gene 
-# Relevant Genes : RARRES1, LCN2, PDZK1IP1, PI3, SAA1, IL19
-# checkout [1]
-# [1] Genomic characteristics of RARRES1 wild type and knockout mice lung tissues https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE131161
-
-dim = 14 - 1
-relevant_genes = ['RARRES1', 'PI3', 'PDZK1IP1', 'SLC26A4', 'IL19', 'ATP12A']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=relevant_genes, 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-adata_subset = adata[adata.obs['ann_level_2'] == 'Airway epithelium'].copy()
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata_subset.obs.index].X[:, dim] > +2))
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = adata_subset.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata_subset, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}p_wilcoxon")
-sc.pl.rank_genes_groups(adata_subset, n_genes=25, sharey=False, key=f"dim_{dim+1}p_wilcoxon")
-relevant_genes = adata_subset.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist() + adata_subset.uns[f'dim_{dim+1}p_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata_subset, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=adata_subset.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist(), 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-relevant_genes = ['RARRES1', 'LCN2', 'PDZK1IP1', 'PI3', 'SAA1', 'RARRES1', 'IL19']
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=relevant_genes, 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-plots = scatter_plot_per_latent(embed_drvi, 'qz_mean', plot_columns, xy_limit=5.5, dimensions=[[13, 29]], s=10)
-for col, plt in zip(plot_columns, plots):
-    plt.show()
-
-
-
-
-
-# ### dim 5-
-# results: Hemoglobin metabolic process
-
-dim = 5 - 1
-relevant_genes = ['HBB', 'HBA2', 'HBA1', 'SLC25A37', 'CA1', 'HBM', 'ALAS2', 'AHSP']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=relevant_genes, 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-# - direction
-adata.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata.obs.index].X[:, dim] < -1))
-adata.obs[f'_drvi_high_dim_{dim+1}'] = adata.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}n_wilcoxon")
-sc.pl.rank_genes_groups(adata, n_genes=25, sharey=False, key=f"dim_{dim+1}n_wilcoxon")
-relevant_genes = adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist() + adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist(), 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-# +
-# as we see DE does not help as good as model's interpretability here
-# -
-
-
-
-# ### dim 45-
-# results: ANKRD36C+ Goblet cells
-#
-# Looks like often there is a subcluster of goblets that have ANKRD36C+:
-# https://www.proteinatlas.org/ENSG00000174501-ANKRD36C/single+cell+type
-
-dim = 45 - 1
-relevant_genes = ['ANKRD36C', 'XIST', 'SORL1', 'CP', 'VPS37B', 'SYTL2', 'SRGAP1', 'SLC5A3', 'RP11-467L13.7']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r', vmin=-2)
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=relevant_genes, 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-# - direction
-adata.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata.obs.index].X[:, dim] < -1))
-adata.obs[f'_drvi_high_dim_{dim+1}'] = adata.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}n_wilcoxon")
-sc.pl.rank_genes_groups(adata, n_genes=25, sharey=False, key=f"dim_{dim+1}n_wilcoxon")
-relevant_genes = adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist() + adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist(), 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-sc.pl.umap(embed_drvi, color=[cell_type_key], 
-           groups=list(embed_drvi.obs[cell_type_key][embed_drvi.obs[cell_type_key].str.contains('Goblet \(bronchial\)', regex=True)].unique()))
-
-subset_adata = adata[adata.obs[cell_type_key].str.contains('Goblet')].copy()
-subset_embed_drvi = embed_drvi[subset_adata.obs.index].copy()
-relevant_genes = ['ANKRD36C', 'XIST', 'SORL1', 'CP', 'VPS37B', 'SYTL2', 'SRGAP1', 'SLC5A3', 'RP11-467L13.7']
-for g in relevant_genes:
-    subset_embed_drvi.obs[g] = subset_adata[:, g].X.A.flatten()
-sc.pl.violin(subset_embed_drvi, [str(dim)], groupby=cell_type_key, rotation=45)
-sc.pp.neighbors(subset_embed_drvi, use_rep="qz_mean", n_neighbors=10, n_pcs=subset_embed_drvi.obsm["qz_mean"].shape[1])
-sc.tl.umap(subset_embed_drvi, spread=1.0, min_dist=0.5, random_state=123)
-sc.pl.umap(subset_embed_drvi, color=[cell_type_key, str(dim)] + relevant_genes)
-
-# +
-adata_subset = subset_adata
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata_subset.obs.index].X[:, dim] < -1))
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = adata_subset.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata_subset, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}n_wilcoxon")
-sc.pl.rank_genes_groups(adata_subset, n_genes=25, sharey=False, key=f"dim_{dim+1}n_wilcoxon")
-relevant_genes = adata_subset.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist() + adata_subset.uns[f'dim_{dim+1}n_wilcoxon']['names']['0.0'][:10].tolist()
-
-subset_embed_drvi = embed_drvi[subset_adata.obs.index].copy()
-for g in relevant_genes:
-    subset_embed_drvi.obs[g] = subset_adata[:, g].X.A.flatten()
-sc.pl.violin(subset_embed_drvi, [str(dim)], groupby=cell_type_key, rotation=45)
-sc.pp.neighbors(subset_embed_drvi, use_rep="qz_mean", n_neighbors=10, n_pcs=subset_embed_drvi.obsm["qz_mean"].shape[1])
-sc.tl.umap(subset_embed_drvi, spread=1.0, min_dist=0.5, random_state=123)
-sc.pl.umap(subset_embed_drvi, color=[cell_type_key, str(dim)] + relevant_genes)
-# -
-
-
-
-
-
-# ### dim 27+
-# results: Inflammation: CXCL9, CXCL10, CXCL11 (inflammation markers [1], [2]), GBP1, GBP4, GBP5 ([3], [4]), and IDO1 ([5])
-# very correlated genes: CXCL10, CXCL9, CXCL11, GBP1, GBP4, GBP5, WARS1, IDO1, NOS2
-#
-# [1] The Pro-Inflammatory Chemokines CXCL9, CXCL10 and CXCL11 Are Upregulated Following SARS-CoV-2 Infection in an AKT-Dependent Manner https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8226769/
-# [2] CXCL9, CXCL10, and CXCL11; biomarkers of pulmonary inflammation associated with autoimmunity in patients with collagen vascular diseases-associated interstitial lung disease and interstitial pneumonia with autoimmune features https://pubmed.ncbi.nlm.nih.gov/33137121/
-# [3] Pathogen-selective killing by guanylate-binding proteins as a molecular mechanism leading to inflammasome signaling https://www.nature.com/articles/s41467-022-32127-0
-# [4] Guanylate Binding Protein 4 Negatively Regulates Virus-Induced Type I IFN and Antiviral Response by Targeting IFN Regulatory Factor 7 https://journals.aai.org/jimmunol/article/187/12/6456/85772/Guanylate-Binding-Protein-4-Negatively-Regulates
-# [5] Regulation of kynurenine biosynthesis during influenza virus infection https://febs.onlinelibrary.wiley.com/doi/10.1111/febs.13966
-
-dim = 27 - 1
-relevant_genes = ['CXCL10', 'GBP1', 'CXCL9', 'WARS1', 'VAMP5', 'CXCL11', 'GBP4', 'GBP5', 'IDO1', 'SLAMF7', 'NCF1', 'EBI3', 'NOS2']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=relevant_genes, 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-# # + direction
-adata.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata.obs.index].X[:, dim] > +2))
-adata.obs[f'_drvi_high_dim_{dim+1}'] = adata.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}p_wilcoxon")
-sc.pl.rank_genes_groups(adata, n_genes=25, sharey=False, key=f"dim_{dim+1}p_wilcoxon")
-relevant_genes = adata.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist() + adata.uns[f'dim_{dim+1}p_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=adata.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist(), 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-
-
-
-
-# ### dim 24+
-# results: MMP10, MMP1, MMP13 (matrix metalloproteinases)
-#
-# Related genes: MMP1, MMP10, MMP13
-
-dim = 24 - 1
-relevant_genes = ['MMP10', 'MMP1', 'STC1', 'CLDN10', 'LRG1', 'MMP13']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=relevant_genes, 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-# # + direction
-adata.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata.obs.index].X[:, dim] > +2))
-adata.obs[f'_drvi_high_dim_{dim+1}'] = adata.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}p_wilcoxon")
-sc.pl.rank_genes_groups(adata, n_genes=25, sharey=False, key=f"dim_{dim+1}p_wilcoxon")
-relevant_genes = adata.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist() + adata.uns[f'dim_{dim+1}p_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=adata.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist(), 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-sc.pl.umap(embed_drvi, color=[cell_type_key], 
-           groups=list(embed_drvi.obs[cell_type_key][embed_drvi.obs[cell_type_key].str.contains('Basal|basal', regex=True)].unique()))
-
-relevant_genes = list(relevant_genes) + ['MMP10', 'MMP1', 'STC1', 'CLDN10', 'LRG1', 'MMP13']
-subset_adata = adata[adata.obs['ann_level_3'].str.contains('Basal', regex=True)].copy()
-subset_embed_drvi = embed_drvi[subset_adata.obs.index].copy()
-subset_adata.obs[str(dim)] = subset_embed_drvi[:, str(dim)].X.flatten().tolist()
-sc.pl.violin(subset_adata, [str(dim)], groupby=cell_type_key, rotation=90)
-rsc.utils.anndata_to_GPU(subset_adata)
-rsc.pp.pca(subset_adata)
-rsc.pp.neighbors(subset_adata)
-rsc.tl.umap(subset_adata, spread=1.0, min_dist=0.5, random_state=123)
-rsc.utils.anndata_to_CPU(subset_adata)
-sc.pl.umap(subset_adata, color=[condition_key, cell_type_key, str(dim)] + relevant_genes)
-
-df = pd.DataFrame({
-    **{g: adata[:, g].X.A.flatten() for g in relevant_genes},
-    'Dim 24': embed_drvi[adata.obs.index].X[:, dim].flatten()
-})
-for g in relevant_genes:
-    sns.scatterplot(data=df, x="Dim 24", y="MMP1", alpha=0.1, s=5, linewidth=0)
-    plt.show()
-
-
-
-
-
-# ### dim 26-
-# results: Some tumor supression genes : CLCA4 ([1], [2]), CSTA ([3], [4]), CALML3 (patent: [5]), and LYPB3 ([6])
-#
-# [1] CLCA4 inhibits cell proliferation and invasion of hepatocellular carcinoma by suppressing epithelial-mesenchymal transition via PI3K/AKT signaling https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6224236/
-#
-# [2] Loss of CLCA4 Promotes Epithelial-to-Mesenchymal Transition in Breast Cancer Cells https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3873418/
-#
-# [3] Cystatin A suppresses tumor cell growth through inhibiting epithelial to mesenchymal transition in human lung cancer https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5865655/
-#
-# [4] Modulation of cystatin A expression in human airway epithelium related to genotype, smoking, COPD, and lung cancer https://pubmed.ncbi.nlm.nih.gov/21325429/
-#
-# [5] Calml3 a specific and sensitive target for lung cancer diagnosis, prognosis and/or theranosis
-#  https://patents.google.com/patent/WO2006053442A1/en
-#  
-# [6] Elevated Expression of LYPD3 Is Associated with Lung Adenocarcinoma Carcinogenesis and Poor Prognosis https://www.liebertpub.com/doi/10.1089/dna.2019.5116
-
-dim = 26 - 1
-relevant_genes = ['CSTA', 'ALDH3A1', 'CALML3', 'CLCA4', 'AKR1C2']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-# - direction
-adata.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata.obs.index].X[:, dim] < -2))
-adata.obs[f'_drvi_high_dim_{dim+1}'] = adata.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}n_wilcoxon")
-sc.pl.rank_genes_groups(adata, n_genes=25, sharey=False, key=f"dim_{dim+1}n_wilcoxon")
-relevant_genes = adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist() + adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist(), 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-subset_adata = adata[adata.obs['ann_level_2'].str.contains('Airway epithelium')].copy()
-subset_embed_drvi = embed_drvi[subset_adata.obs.index].copy()
-relevant_genes = ['CSTA', 'ALDH3A1', 'CALML3', 'CLCA4', 'AKR1C2']
-for g in relevant_genes:
-    subset_embed_drvi.obs[g] = subset_adata[:, g].X.A.flatten()
-sc.pl.violin(subset_embed_drvi, [str(dim)], groupby=cell_type_key, rotation=90)
-
-subset_adata = adata[adata.obs[cell_type_key].str.contains('Basal|Suprabasal|Hillock|Club \(nasal\)|Goblet \(nasal\)', regex=True)].copy()
-subset_embed_drvi = embed_drvi[subset_adata.obs.index].copy()
-relevant_genes = ['CSTA', 'ALDH3A1', 'CALML3', 'CLCA4', 'AKR1C2', 'LYPD3']
-for g in relevant_genes:
-    subset_embed_drvi.obs[g] = subset_adata[:, g].X.A.flatten()
-sc.pl.violin(subset_embed_drvi, [str(dim)], groupby=cell_type_key, rotation=90)
-sc.pp.neighbors(subset_embed_drvi, use_rep="qz_mean", n_neighbors=10, n_pcs=subset_embed_drvi.obsm["qz_mean"].shape[1])
-sc.tl.umap(subset_embed_drvi, spread=1.0, min_dist=0.5, random_state=123)
-sc.pl.umap(subset_embed_drvi, color=[cell_type_key, str(dim)] + relevant_genes)
-
-subset_adata = adata[adata.obs[cell_type_key].str.contains('Basal|Suprabasal|Hillock|Club \(nasal\)|Goblet \(nasal\)', regex=True)].copy()
-subset_embed_drvi = embed_drvi[subset_adata.obs.index].copy()
-subset_adata.obs[str(dim)] = subset_embed_drvi[:, str(dim)].X.flatten().tolist()
-subset_adata
-sc.pl.violin(subset_adata, [str(dim)], groupby=cell_type_key, rotation=90)
-rsc.utils.anndata_to_GPU(subset_adata)
-rsc.pp.pca(subset_adata)
-rsc.pp.neighbors(subset_adata)
-rsc.tl.umap(subset_adata, spread=1.0, min_dist=0.5, random_state=123)
-rsc.utils.anndata_to_CPU(subset_adata)
-sc.pl.umap(subset_adata, color=[cell_type_key, str(dim)] + relevant_genes)
-
-
-
-
-
-# ### dim 4-
-# results: IFI27+ macrophages ([1], [2])
-#
-# [1] ScRNA-seq Expression of APOC2 and IFI27 Identifies Four Alveolar Macrophage Superclusters in Cystic Fibrosis and Healthy BALF  https://www.biorxiv.org/content/biorxiv/early/2022/01/30/2022.01.30.478325.full.pdf
-#
-# [2] Pro-inflammatory alveolar macrophages associated with allograft dysfunction after lung transplantation https://www.biorxiv.org/content/10.1101/2021.03.03.433654v1.full.pdf
-
-dim = 4 - 1
-relevant_genes = ['IFI27']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-# - direction
-adata.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata.obs.index].X[:, dim] < -1))
-adata.obs[f'_drvi_high_dim_{dim+1}'] = adata.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}n_wilcoxon")
-sc.pl.rank_genes_groups(adata, n_genes=25, sharey=False, key=f"dim_{dim+1}n_wilcoxon")
-relevant_genes = adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist() + adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist(), 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-
-
-
-
-# ### dim 31+
-# results: represents TNFRSF12A, ERRFI1, CCN1 (maybe TNF signaling?)
-
-dim = 31 - 1
-relevant_genes = ['TNFRSF12A', 'ERRFI1', 'CCN1', 'PHLDA2', 'EDN1', 'GADD45A', 'NEDD9', 'LAMC2', 'PMAIP1', 'HBEGF', 'ARID5B', 'DKK1', 'MIR222HG', 'RASD1', 'PALLD', 'EGR3', 'FST', 'EDN2', 'NRG1', 'KRTAP3-1']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=relevant_genes, 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-adata_subset = adata[adata.obs['ann_level_2'] == 'Airway epithelium'].copy()
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata_subset.obs.index].X[:, dim] > +2))
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = adata_subset.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata_subset, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}p_wilcoxon")
-sc.pl.rank_genes_groups(adata_subset, n_genes=25, sharey=False, key=f"dim_{dim+1}p_wilcoxon")
-relevant_genes = adata_subset.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist() + adata_subset.uns[f'dim_{dim+1}p_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=adata_subset.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist(), 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-
-
-# Compare with dim 18
-plot_latent_dims_in_umap(embed_drvi, dims=_m1([31, 18]), vcenter=0, cmap='RdBu_r')
-plt.show()
-plots = scatter_plot_per_latent(embed_drvi, 'qz_mean', plot_columns, xy_limit=5.5, dimensions=_m1([31, 18]), s=10, alpha=0.1)
-for col, plt in zip(plot_columns, plots):
-    plt.show()
-
-embed_drvi[embed_drvi.obs['ann_level_3'] == 'Basal'].obs['study'].value_counts(normalize=True)
-
-embed_drvi[(embed_drvi.obs['ann_level_3'] == 'Basal') & (embed_drvi[:, 30].X > 2)].obs['study'].value_counts(normalize=True)
-
-
-
-x = embed_drvi[embed_drvi[:, 30].X > 2]
-(
-    adata[adata.obs['study'] == 'Nawijn_2021'].obs['smoking_status'].value_counts(normalize=True), 
-    x[x.obs['study'] == 'Nawijn_2021'].obs['smoking_status'].value_counts(normalize=True), 
-    adata[adata.obs['study'] == 'Seibold_2020'].obs['smoking_status'].value_counts(normalize=True), 
-    x[x.obs['study'] == 'Seibold_2020'].obs['smoking_status'].value_counts(normalize=True), 
-    adata[adata.obs['study'] == 'Krasnow_2020'].obs['smoking_status'].value_counts(normalize=True), 
-    x[x.obs['study'] == 'Krasnow_2020'].obs['smoking_status'].value_counts(normalize=True), 
-)
-
-
-
-# ### dim 37+
-# results: MIP-1α/CCL3
-
-dim = 37 - 1
-relevant_genes = ['CCL4', 'CCL3', 'CCL4L2', 'CCL3L1', 'TNFAIP6', 'PLEK', 'TNF', 'IL1A', 'CXCL5', 'MIR155HG']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=relevant_genes, 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-adata_subset = adata[adata.obs['ann_level_2'] == 'Myeloid'].copy()
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata_subset.obs.index].X[:, dim] > +2))
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = adata_subset.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata_subset, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}p_wilcoxon")
-sc.pl.rank_genes_groups(adata_subset, n_genes=25, sharey=False, key=f"dim_{dim+1}p_wilcoxon")
-relevant_genes = adata_subset.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist() + adata_subset.uns[f'dim_{dim+1}p_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata_subset, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=adata_subset.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist(), 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-
-
-# ### dim 10+
-# results: Multiciliated Lineage (shade towards DNAAF1)
-#
-# Related genes: DNAAF1, EFHC1, CFAP157, DNAH12, DNAH11, CDHR3
-
-dim = 10 - 1
-relevant_genes = ['DNAAF1', 'EFHC1', 'CFAP157', 'DNAH12', 'CDHR3', 'DNAH11', 'CFAP70', 'ODF2L', 'SYNE1', 'DRC3', 'RP1', 'RABL2B', 'DNAH5', 'GABPB1-AS1', 'CCDC17', 'SPAG17', 'HYDIN', 'DYNC2I1', 'DNAH7', 'FAM227A', 'VWA3A', 'MUC16', 'CEP126', 'CFAP43', 'DNAH6', 'DYNC2H1', 'RFX3', 'TMEM67', 'CCDC30', 'DLEC1', 'CFAP44', 'NEK5', 'CFAP54', 'NEK10', 'CDHR4', 'DTHD1', 'SPEF2', 'CFAP251', 'SYNE2', 'CFAP46', 'FHAD1', 'WDR49', 'MOK', 'MAPK15', 'DNAH3', 'DZIP3', 'DNAH10', 'BCYRN1', 'ZBBX', 'CSPP1', 'UBXN11', 'DYNLT5', 'DNAI1', 'ODAD1', 'ANKUB1', 'FRMPD2', 'CFAP100', 'TOGARAM2', 'TTLL10', 'CFAP91', 'DNAI2', 'DZIP1L', 'SORBS2', 'VNN3', 'ADGB', 'ARMH1', 'CCDC190', 'KIAA2012', 'IQUB', 'KLHL6', 'SH3D19', 'ADAM12']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=relevant_genes, 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-sc.pl.umap(embed_drvi, color=['ann_level_3'], 
-           groups=list(embed_drvi.obs['ann_level_3'][embed_drvi.obs['ann_level_3'].str.contains('cilia', regex=True)].unique()))
-
-# Compare with dim 52
-plot_latent_dims_in_umap(embed_drvi, dims=_m1([10, 52]), vcenter=0, cmap='RdBu_r')
-plt.show()
-plots = scatter_plot_per_latent(embed_drvi, 'qz_mean', plot_columns, xy_limit=5.5, dimensions=_m1([10, 52]), s=10, alpha=0.1)
-for col, plt in zip(plot_columns, plots):
-    plt.show()
-
-dim = 10 - 1
-adata_subset = adata[adata.obs['ann_level_3'] == 'Multiciliated lineage'].copy()
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata_subset.obs.index].X[:, dim] > +2))
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = adata_subset.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata_subset, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}p_wilcoxon")
-sc.pl.rank_genes_groups(adata_subset, n_genes=25, sharey=False, key=f"dim_{dim+1}p_wilcoxon")
-relevant_genes = adata_subset.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist() + adata_subset.uns[f'dim_{dim+1}p_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata_subset, 'X_umap_drvi', color=relevant_genes)
-
-
-
-
-
-
-
-
-
-# ### dim 16+-
-# result: 
-#  -  +: small noise near zero / some correlations with KRT14
-#  -  -: SERPINB3
-#
-
-dim = 16 - 1
-# # + direction
-relevant_genes = []  # no relevant gene
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-# sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-# # + direction
-adata.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata.obs.index].X[:, dim] > +1))
-adata.obs[f'_drvi_high_dim_{dim+1}'] = adata.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}p_wilcoxon")
-sc.pl.rank_genes_groups(adata, n_genes=25, sharey=False, key=f"dim_{dim+1}p_wilcoxon")
-relevant_genes = adata.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=+1, cmap='RdGy_r')
-
-df = pd.DataFrame({'KRT14': adata[:, 'KRT14'].X.A.flatten(),
-                   'KRT6A': adata[:, 'KRT6A'].X.A.flatten(),
-                   'Dim 16': embed_drvi[adata.obs.index].X[:, dim].flatten()})
-sns.scatterplot(data=df, x="Dim 16", y="KRT14", alpha=0.1, s=5, linewidth=0)
-plt.show()
-sns.scatterplot(data=df, x="Dim 16", y="KRT6A", alpha=0.1, s=5, linewidth=0)
-plt.show()
-
-
-
-# +
-# - direction
-
-relevant_genes = ['SERPINB3', 'AQP5', 'FAM3D', 'TMEM213']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-# -
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=relevant_genes, 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-adata.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata.obs.index].X[:, dim] < -2))
-adata.obs[f'_drvi_high_dim_{dim+1}'] = adata.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}n_wilcoxon")
-sc.pl.rank_genes_groups(adata, n_genes=25, sharey=False, key=f"dim_{dim+1}n_wilcoxon")
-relevant_genes = adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist() + adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-adata_subset = adata[adata.obs['ann_level_2'] == 'Airway epithelium'].copy()
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata_subset.obs.index].X[:, dim] < -2))
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = adata_subset.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata_subset, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}n_wilcoxon")
-sc.pl.rank_genes_groups(adata_subset, n_genes=25, sharey=False, key=f"dim_{dim+1}n_wilcoxon")
-relevant_genes = adata_subset.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist() + adata_subset.uns[f'dim_{dim+1}n_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata_subset, 'X_umap_drvi', color=relevant_genes)
-
-
-
-
-
-# ### dim 40-
-# result: SPRR3, C15orf48
-#
-# in [1] says: "Among multiciliated cells, LYPD2, SPRR3, and C15orf48 were enriched in nasal cells"
-# [1] A Single-Cell Atlas of the Human Healthy Airways https://www.atsjournals.org/doi/full/10.1164/rccm.201911-2199OC
-
-dim = 40 - 1
-# - direction
-relevant_genes = ['TACSTD2', 'C15orf48', 'LYPD2', 'KRT4', 'KRT8', 'PSCA', 'SPRR3', 'S100P', 'SERPINB2', 'LYNX1', 'CEACAM5', 'MMP7', 'MAL2', 'ALPL', 'KRT23', 'DHRS9', 'TMPRSS11B', 'SPINK7']  # no relevant gene
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=relevant_genes, 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-adata.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata.obs.index].X[:, dim] < -4))
-adata.obs[f'_drvi_high_dim_{dim+1}'] = adata.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}n_wilcoxon")
-sc.pl.rank_genes_groups(adata, n_genes=25, sharey=False, key=f"dim_{dim+1}n_wilcoxon")
-relevant_genes = adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist() + adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-adata_subset = adata[adata.obs['ann_level_2'] == 'Airway epithelium'].copy()
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata_subset.obs.index].X[:, dim] < -4))
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = adata_subset.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata_subset, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}n_wilcoxon")
-sc.pl.rank_genes_groups(adata_subset, n_genes=25, sharey=False, key=f"dim_{dim+1}n_wilcoxon")
-relevant_genes = adata_subset.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist() + adata_subset.uns[f'dim_{dim+1}n_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata_subset, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=adata_subset.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist(), 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-
-
-# ### dim 50+
-# results:  Resident macrophages [1] (markers: RNASE1, SELENOP, STAB1, F13A1, FOLR2, PLTP)
-#
-# [1] Comparative analysis of thoracic and abdominal aortic aneurysms across the segment and species at the single-cell level https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9871934/
-
-dim = 50 - 1
-relevant_genes = ['RNASE1', 'LGALS1', 'CD163', 'MS4A6A', 'CD14', 'SELENOP', 'HMOX1', 'CTSZ', 'MRC1', 'TGFBI', 'STAB1', 'MAFB', 'MARCKS', 'MS4A4A', 'F13A1', 'FCGR2A', 'FOLR2', 'PLTP', 'MAF', 'SLCO2B1', 'SLC40A1', 'CSF1R', 'FPR3', 'CD84', 'CCL13', 'C3AR1', 'LYVE1', 'PPBP', 'C4orf48', 'SDS', 'PDK4', 'GPR34', 'NAIP', 'CCR1', 'PLEKHO1', 'NCKAP1L', 'TMIGD3', 'CCL8', 'CYTH4', 'CCL7', 'OLFML2B', 'ITGAM', 'GASK1B', 'ADAMDEC1', 'PIK3R5', 'C5AR2', 'PF4', 'ST8SIA4']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=relevant_genes, 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-# # + direction
-adata.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata.obs.index].X[:, dim] > +2))
-adata.obs[f'_drvi_high_dim_{dim+1}'] = adata.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}p_wilcoxon")
-sc.pl.rank_genes_groups(adata, n_genes=25, sharey=False, key=f"dim_{dim+1}p_wilcoxon")
-relevant_genes = adata.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist() + adata.uns[f'dim_{dim+1}p_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=adata.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist(), 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-adata_subset = adata[adata.obs['ann_level_2'] == 'Myeloid'].copy()
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata_subset.obs.index].X[:, dim] > +2))
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = adata_subset.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata_subset, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}p_wilcoxon")
-sc.pl.rank_genes_groups(adata_subset, n_genes=25, sharey=False, key=f"dim_{dim+1}p_wilcoxon")
-relevant_genes = adata_subset.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist() + adata_subset.uns[f'dim_{dim+1}p_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata_subset, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=adata.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist(), 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-
-
-
-
-
-
-# ### dim 63+
-# results: MT+ (stress response to metal ion)
-
-dim = 63 - 1
-relevant_genes = ['MT2A', 'MT1X', 'MT1G', 'MT1E', 'MT1F', 'MT1M', 'MT1H', 'MT1A']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=relevant_genes, 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-
-
-
-
-
-
-# ### dim 11+-
-# result: 
-#  -  +: Claudin-4 gene [1] (also coexpressed with PLAU, PLAUR)
-#  -  -: Low expression of some genes like S100A4, S100A8, S100A9, SRGN, LST1, TIMP1, COTL1
-#
-# [1] Claudin-4 as a Marker for Distinguishing Malignant Mesothelioma From Lung Carcinoma and Serous Adenocarcinoma (https://journals.sagepub.com/doi/10.1177/1066896913491320)
-# [2] Claudin-4 augments alveolar epithelial barrier function and is induced in acute lung injury (https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2742793/)
-
-dim = 11 - 1
-# # + direction
-relevant_genes = ['CLDN4', 'PLAU', 'ALDH1A3', 'DUSP5', 'HS3ST1']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=relevant_genes, 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-# # + direction
-adata.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata.obs.index].X[:, dim] > +2))
-adata.obs[f'_drvi_high_dim_{dim+1}'] = adata.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}p_wilcoxon")
-sc.pl.rank_genes_groups(adata, n_genes=25, sharey=False, key=f"dim_{dim+1}p_wilcoxon")
-relevant_genes = adata.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=relevant_genes, 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-adata_subset = adata[adata.obs['ann_level_2'] == 'Airway epithelium'].copy()
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata_subset.obs.index].X[:, dim] > +2))
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = adata_subset.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata_subset, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}p_wilcoxon")
-sc.pl.rank_genes_groups(adata_subset, n_genes=25, sharey=False, key=f"dim_{dim+1}p_wilcoxon")
-relevant_genes = adata_subset.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist() + adata_subset.uns[f'dim_{dim+1}p_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata_subset, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=['CLDN4', 'PLAU', 'PLAUR'], 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-
-
-# - direction
-dim = 11 - 1
-relevant_genes = ['APOC1', 'APOE', 'VIM', 'CCL18', 'GPNMB', 'CD68', 'PLIN2', 'NUPR1', 'CTSL', 'CYP27A1', 'MS4A7', 'OTOA', 'SNX10', 'FGR', 'EVI2B', 'MPP1', 'KCNMA1', 'HAMP', 'LINC02154', 'LILRB4', 'A1BG', 'SLC16A6']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=relevant_genes, 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-adata.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata.obs.index].X[:, dim] < -2))
-adata.obs[f'_drvi_high_dim_{dim+1}'] = adata.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}n_wilcoxon")
-sc.pl.rank_genes_groups(adata, n_genes=25, sharey=False, key=f"dim_{dim+1}n_wilcoxon")
-relevant_genes = adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist() + adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-adata_subset = adata[adata.obs['ann_level_2'] == 'Myeloid'].copy()
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata_subset.obs.index].X[:, dim] < -2))
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = adata_subset.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata_subset, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}n_wilcoxon")
-sc.pl.rank_genes_groups(adata_subset, n_genes=25, sharey=False, key=f"dim_{dim+1}n_wilcoxon")
-relevant_genes = adata_subset.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist() + adata_subset.uns[f'dim_{dim+1}n_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata_subset, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=adata_subset.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist(), 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-# +
-plot_genes = adata_subset.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist() + adata_subset.uns[f'dim_{dim+1}n_wilcoxon']['names']['0.0'][:10].tolist()
-df = pd.DataFrame({
-    **{g: adata_subset[:, g].X.A.flatten() 
-       for g in plot_genes}
-    ,
-    '- Dim 36': -embed_drvi[adata_subset.obs.index].X[:, dim].flatten()})
-
-for g in plot_genes:
-    sns.scatterplot(data=df, x="- Dim 36", y=g, alpha=0.1, s=5, linewidth=0)
-    plt.show()
-# -
-
-
-
-
-
-# ### dim 56+
-# results: CCL2 in blood cells
-#
-#
-
-dim = 56 - 1
-relevant_genes = ['CCL2', 'EMP1', 'SERPINE1', 'AKAP12', 'CX3CL1', 'FSTL3', 'ARID5A', 'CSF1', 'ITGA5', 'CDC42EP2', 'RCAN1', 'FAM43A', 'C2CD4B']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=relevant_genes, 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-# # + direction
-adata.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata.obs.index].X[:, dim] > +2))
-adata.obs[f'_drvi_high_dim_{dim+1}'] = adata.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}p_wilcoxon")
-sc.pl.rank_genes_groups(adata, n_genes=25, sharey=False, key=f"dim_{dim+1}p_wilcoxon")
-relevant_genes = adata.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist() + adata.uns[f'dim_{dim+1}p_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=adata.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist(), 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-adata_subset = adata[adata.obs['ann_level_2'] == 'Blood vessels'].copy()
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata_subset.obs.index].X[:, dim] > +2))
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = adata_subset.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata_subset, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}p_wilcoxon")
-sc.pl.rank_genes_groups(adata_subset, n_genes=25, sharey=False, key=f"dim_{dim+1}p_wilcoxon")
-relevant_genes = adata_subset.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist() + adata_subset.uns[f'dim_{dim+1}p_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata_subset, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=adata.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist(), 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-
-
-dim = 56 - 1
-subset_embed_drvi = embed_drvi[embed_drvi.obs['ann_level_2'] == 'Blood vessels'].copy()
-subset_embed_drvi.obs[f'Dim {dim+1}'] = subset_embed_drvi.X[:, dim]
-subset_embed_drvi.obs['group'] = subset_embed_drvi.obs['ann_finest_level'].astype(str) + ' - ' + subset_embed_drvi.obs['lung_condition'].astype(str)
-sc.pl.violin(subset_embed_drvi, [f'Dim {dim+1}'], groupby='group', rotation=90, stripplot=False)
-
-
-
-
-
-# ### dim 59+
-# results: SMG duct cells
-# Related genes: CLU, KRT14
-
-dim = 59 - 1
-relevant_genes = ['CLU', 'KRT14', 'DEFB1', 'FOLR1', 'SFRP1']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=relevant_genes, 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-adata_subset = adata[adata.obs['ann_level_2'] == 'Airway epithelium'].copy()
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata_subset.obs.index].X[:, dim] > +2))
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = adata_subset.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata_subset, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}p_wilcoxon")
-sc.pl.rank_genes_groups(adata_subset, n_genes=25, sharey=False, key=f"dim_{dim+1}p_wilcoxon")
-relevant_genes = adata_subset.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist() + adata_subset.uns[f'dim_{dim+1}p_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata_subset, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=adata_subset.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist(), 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-df = pd.DataFrame({'KRT14': adata_subset[:, 'KRT14'].X.A.flatten(),
-                   'KRT5': adata_subset[:, 'KRT5'].X.A.flatten(), 
-                   'CLU': adata_subset[:, 'CLU'].X.A.flatten(), 
-                   'IFI27': adata_subset[:, 'IFI27'].X.A.flatten(), 
-                   'Dim 59': embed_drvi[adata_subset.obs.index].X[:, dim].flatten()})
-sns.scatterplot(data=df, x="Dim 59", y="KRT14", alpha=0.1, s=5, linewidth=0)
-plt.show()
-sns.scatterplot(data=df, x="Dim 59", y="KRT5", alpha=0.1, s=5, linewidth=0)
-plt.show()
-sns.scatterplot(data=df, x="Dim 59", y="CLU", alpha=0.1, s=5, linewidth=0)
-plt.show()
-sns.scatterplot(data=df, x="Dim 59", y="IFI27", alpha=0.1, s=5, linewidth=0)
-plt.show()
-
-# Compare with dim 16
-plot_latent_dims_in_umap(embed_drvi, dims=_m1([59, 16]), vcenter=0, cmap='RdBu_r')
-plt.show()
-plots = scatter_plot_per_latent(embed_drvi, 'qz_mean', plot_columns, xy_limit=5.5, dimensions=_m1([59, 16]), s=10, alpha=0.1)
-for col, plt in zip(plot_columns, plots):
-    plt.show()
-
-
-
-
-
-
-
-# ### dim 9+
-# results: MHC class II protein complex (HLA genes)
-
-dim = 9 - 1
-relevant_genes = ['HLA-DRA', 'HLA-DRB1', 'HLA-DPA1', 'HLA-DQB1', 'HLA-DRB5', 'HLA-DQA1', 'HLA-DMA', 'HLA-DMB', 'HLA-DQA2']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=relevant_genes, 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-
-
-
-
-
-
-# ### dim 47-
-# result: 
-
-dim = 47 - 1
-# - direction
-relevant_genes = ['KRT19', 'AQP3', 'NTS', 'MGST1', 'PRSS23', 'CCND1', 'SERPINB4', 'KLK11', 'PLAT', 'CLCA2', 'SERPINB13', 'ARL4D']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=relevant_genes, 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-adata.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata.obs.index].X[:, dim] < -2))
-adata.obs[f'_drvi_high_dim_{dim+1}'] = adata.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}n_wilcoxon")
-sc.pl.rank_genes_groups(adata, n_genes=25, sharey=False, key=f"dim_{dim+1}n_wilcoxon")
-relevant_genes = adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist() + adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist(), 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-adata_subset = adata[adata.obs['ann_level_2'] == 'Airway epithelium'].copy()
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata_subset.obs.index].X[:, dim] < -2))
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = adata_subset.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata_subset, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}n_wilcoxon")
-sc.pl.rank_genes_groups(adata_subset, n_genes=25, sharey=False, key=f"dim_{dim+1}n_wilcoxon")
-relevant_genes = adata_subset.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist() + adata_subset.uns[f'dim_{dim+1}n_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata_subset, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=adata.uns[f'dim_{dim+1}n_wilcoxon']['names']['1.0'][:10].tolist(), 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-
-
-
-
-
-
-
-
-# ### dim 13+
-# results: AT0 + AT2 proliferating
-
-dim = 13 - 1
-relevant_genes = ['SFTA2', 'MUC1', 'SLC34A2', 'PEG10', 'CTSE', 'GDF15', 'HSD17B6', 'AQP4', 'SFTA3_ENSG00000229415', 'NKX2-1', 'AK1', 'SELENBP1', 'MALL', 'GKN2', 'C4BPA', 'AC008268.1', 'XAGE2']
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata, 'X_umap_drvi', color=relevant_genes)
-
-gp = GProfiler(return_dataframe=True)
-relevant_pathways = gp.profile(organism='hsapiens', query=relevant_genes, 
-                               background=list(adata.var.index), domain_scope='custom')
-display(relevant_pathways[:10])
-
-adata_subset = adata[adata.obs['ann_level_1'] == 'Epithelial'].copy()
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = (0. + (embed_drvi[adata_subset.obs.index].X[:, dim] > +2))
-adata_subset.obs[f'_drvi_high_dim_{dim+1}'] = adata_subset.obs[f'_drvi_high_dim_{dim+1}'].astype('category')
-sc.tl.rank_genes_groups(adata_subset, f'_drvi_high_dim_{dim+1}', method='wilcoxon', key_added = f"dim_{dim+1}p_wilcoxon")
-sc.pl.rank_genes_groups(adata_subset, n_genes=25, sharey=False, key=f"dim_{dim+1}p_wilcoxon")
-relevant_genes = adata_subset.uns[f'dim_{dim+1}p_wilcoxon']['names']['1.0'][:10].tolist() + adata_subset.uns[f'dim_{dim+1}p_wilcoxon']['names']['0.0'][:10].tolist()
-plot_latent_dims_in_umap(embed_drvi, dims=[dim], vcenter=0, cmap='RdBu_r')
-sc.pl.embedding(adata_subset, 'X_umap_drvi', color=relevant_genes)
-
-
-
-
-
-
-
-
-
-# # Making plots for each factor
+# ## DRVI interpretability
 
 embed_drvi = embeds['DRVI']
+model_drvi = drvi.model.DRVI.load(RUNS_TO_LOAD['DRVI'] / 'model.pt', adata, prefix='v_0_1_0_')
 adata.obsm['X_umap_drvi'] = embed_drvi[adata.obs.index].obsm['X_umap']
 
-# +
-dim_info = [
-("29+", ["ann_finest_level:T cells"], [], "T cells / CD4+ T cells"),
-("12-", ["ann_level_3:Macrophages"], [], "Macrophages"),
-("44+", ["ann_finest_level:AT2"], [], "AT2"),
-("54-", ["ann_finest_level:NK cells"], [], "NK cells (+ little expression on CD8 and Prolif T cells)"),
-("19+", ["ann_finest_level:EC arterial|EC venous"], [], "EC subtypes"),
-("52+", ["ann_level_3:Multiciliated lineage"], [], "Multiciliated lineage"),
-("3-", ["ann_finest_level:Ionocyte|Neuroendocrine"], [], "Ionocytes + Neuroendocrine"),
-("23+", ["ann_finest_level:Mast cells|Hematopoietic"], [], "Mast Cells + HPSC"),
-("42+", ["ann_level_3:B cell lineage", "ann_finest_level:B cells|Plasmacytoid"], [], "B Cells + Plasmacytoids DCs + HPSC + fraction of plasma cells"),
-("35+", ["ann_finest_level:Plasma cells"], [], "Plasma cells"),
-("8+", ["ann_finest_level:Deuterosomal"], [], "Deuterosomal"),
-("64+", ["ann_finest_level:Mesothelium|Suprabasal fibroblasts"], [], "Mesothelium + Suprabasal fibroblasts"),
-("20+", ["ann_finest_level:SMG serous"], [], "SMG serous (nasal + bronchial)"),
-("20-", ["ann_finest_level:Tuft"], [], "Tuft + little expression on other CTs"),
-("51+", ["ann_finest_level:Migratory DCs"], [], "Migratory DCs"),
-("46+", ["ann_finest_level:AT0|pre-TB secretory"], [], "AT0 + pre-TB secretery"),
-("13+", ["ann_finest_level:AT0|AT2 proliferating|AT1|AT2|pre-TB secretory"], [], "AT0 + AT2 proliferating"),
-("17-", ["ann_finest_level:Smooth muscle|SM activ|Pericytes"], [], "Smooth Muscle (+ little expression on pericytes + Myofibroblasts)"),
-("49-", ["ann_finest_level:Hillock-like"], [], "Hillock-like (+ some others)"),
-("10-", ["ann_finest_level:DC1"], [], "DC1"),
-("7+", ["ann_finest_level:AT1"], [], "AT1"),
-("33-", ["ann_level_3:Lymphatic EC|EC capilliary"], [], "Lymphatic EC (+ little expression of EC aerocyte capilliary)"),
-("57+", ["ann_level_2:Fibroblast lineage", "ann_finest_level:Adventitial fibroblasts"], [], "Fibroblasts (- adventitial fibroblasts)"),
-("9-", ["ann_level_2:Fibroblast lineage", "ann_finest_level:Adventitial fibroblasts"], [], "Peribronchial fibroblasts + Advential fibroblasts + Subpleural fibroblasts (+ little expression on other fibroblasts and Mesothelium)"),
-("56-", ["ann_finest_level:Non-classical monocytes"], [], "Non-classical monocytes (and little expression on monocytes)"),
-("60+", ["ann_finest_level:SMG mucous"], [], "SMG mucous"),
-("60-", ["ann_finest_level:EC general capillary"], [], "EC general Capillary (+ little expression on other ECs)"),
-("53-", ["ann_finest_level:Basal resting"], [], "Basal resting (KRT17, KRT15, BCAM genes)"),
-("59-", ["ann_finest_level:Classical monocytes"], [], "Classical monocytes (+ little expression on other CTs)"),
-("47+", ["ann_finest_level:DC2|DC|Interstitial Mph perivascular|Hematopoietic"], [], "DC2 (+ expression on other DCs and Interstitial Mph perivascular + HPSC)"),
-("19-", ["ann_level_2:Submucosal Gland"], [], "Submucosal Gland (in level 2 annotations)"),
-("25+", ["ann_finest_level:proliferating"], [], "[Share Process] Proliferation"),
-("32+", [], ["genes:JUN,FOSB,FOS"], "FOS, FOSB, JUN coexpression"),
-("32-", [], ["genes:SPRR1B,SPRR2A,KRT13"], "Keratinization, Small proline-rich proteins (SPRP)"),
-("36+", [], ["genes:C1QA,C1QB,C1QC"], "C1Q complex "),
-("3+", [], ["genes:EREG,IL1B,IL1RN"], "EREG / Interlukin sugnaling"),
-("27+", [], ["genes:CXCL10,CXCL9,CXCL11"], "Inflammation CXCL9, CXCL10, CXCL11 / GBP1, GBP4, GBP5 / IDO1 / ..."),
-("38-", [], ["genes:ISG15,IFI6,IFITM3"], "Interferon alpha/beta signaling"),
-("30+", [], ["genes:SAA1,SAA2,LCN2"], "SAA and LNC2 (Maybe antibacterial response) -> limited to Multiciliated cells"),
-("5-", [], ["genes:HBB,HBA2,HBA1"], "Hemoglobin metabolic process"),
-("24+", [], ["genes:MMP10,MMP1,MMP13"], "MMP10, MMP1, MMP13 (matrix metalloproteinases)"),
-("26-", [], ["genes:CLCA4,CALML3,CSTA"], "Some tumor supression genes: CLCA4, CSTA, CALML3, and LYPB3"),
-("10+", [], ["genes:DNAAF1"], "Multiciliated Lineage (shade towards DNAAF1)"),
-("16+", [], ["genes:KRT14"], "/SOSO (some correlations with KRT14)"),
-("16-", [], ["genes:SERPINB3,FAM3D"], "/SOSO (some correlations with SERPINB3)"),
-("63+", [], ["genes:MT1G,MT1X,MT1E,MT2A"], "MT+ (stress response to metal ion)"),
-("9+", [], ["genes:HLA-DRA,HLA-DRB1,HLA-DPA1"], "MHC class II protein complex (HLA genes)"),
-("61-", [], ["genes:SCGB1A1,SCGB3A1,TMEM45A", "genes#Airway epithelium@ann_level_2:SCGB1A1,SCGB3A1,TMEM45A"], "SCGB1A1 marker gene (covers parts of Club, Goblet, Deuterosomal, pre-TB secretory, Multiciliated cells)"),
-("34-", [], ["genes:WFDC2,SLPI,BPIFA1", "genes#Airway epithelium@ann_level_2:WFDC2,SLPI,BPIFA1"], "/TODO (Goblet + Club + SMG duct + ...)"),
-("6-", [], ["genes:MUC5AC,MSMB,BPIFB1", "genes#Airway epithelium@ann_level_2:MUC5AC,MSMB,BPIFB1"], "Goblet cells + SMG mucous (little expression from Club + ...)"),
-("31+", [], ["genes:ERRFI1,TNFRSF12A,CCN1", "genes#Airway epithelium@ann_level_2:ERRFI1,TNFRSF12A,CCN1"], "represents TNFRSF12A, ERRFI1, CCN1"),
-("14+", [], ["genes:RARRES1,SAA1,SAA2", "genes#Airway epithelium@ann_level_2:RARRES1,SAA1,SAA2"], "SAA and RARRES1 -> limited to epithelial cells"),
-("40-", [], ["genes:SPRR3,C15orf48", "genes#Airway epithelium@ann_level_2:SPRR3,C15orf48"], "/SOSO (some correlations with SPRR3, C15orf48)"),
-("11+", [], ["genes:CLDN4,PLAU,PLAUR", "genes#Airway epithelium@ann_level_2:CLDN4,PLAU,PLAUR"], "Claudin-4 gene"),
-("59+", [], ["genes:KRT14,CLU,KRT5", "genes#Airway epithelium@ann_level_2:KRT14,CLU,KRT5"], "/SOSO (some correlations with KRT14, CLU)"),
-("47-", [], ["genes:KRT19", "genes#Airway epithelium@ann_level_2:KRT19"], "/SOSO (some correlations with very high expression of KRT19)"),
-("1+", [], ["genes:S100A8,S100A9,S100A7", "genes#Airway epithelium@ann_level_2:S100A8,S100A9,S100A7"], "S100 proteins"),
-("11-", [], ["genes:S100A4,S100A8,S100A9", "genes#Myeloid@ann_level_2:S100A4,S100A8,S100A9"], "/SOSO (low expression of some genes like S100A4, S100A8, S100A9)"),
-("18+", [], ["genes:CXCL2,ICAM1,SOD2", "genes#Myeloid@~ann_level_2:CXCL2,ICAM1,SOD2"], "IL-17 signaling pathway / TNF signaling pathway"),
-("4-", [], ["genes:IFI27", "genes#Myeloid@ann_level_2:IFI27"], "IFI27+ macrophages"),
-("50+", [], ["genes:SELENOP,RNASE1,STAB1", "genes#Myeloid@ann_level_2:SELENOP,RNASE1,STAB1"], "Resident macrophages (RNASE1, STAB1, F13A1, FOLR2)"),
-("37+", [], ["genes:CCL3,CCL4,CCL4L2", "genes#Myeloid@ann_level_2:CCL3,CCL4,CCL4L2"], "MIP-1α/CCL3"),
-("56+", [], ["genes:CCL2,SERPINE1,CX3CL1", "genes#Blood@ann_level_2:CCL2,SERPINE1,CX3CL1"], "CCL2+ blood cells"),
-("36-", [], ["genes:C11orf96,CRISPLD2", "genes#Fibroblast|Smooth muscle@ann_level_2:C11orf96,CRISPLD2"], "C11orf96 and CRISPLD2 expression in Fibroblast lineage"),
-("45-", [], ["genes:ANKRD36C", "genes#Goblet@ann_finest_level:ANKRD36C"], "ANKRD36C+ Goblet cells"),
-
-]
-# +
-dim_info = [
-("29+", ["ann_finest_level:T cells"], [], "T cells / CD4+ T cells"),
-("54-", ["ann_finest_level:NK cells"], [], "NK cells (+ little expression on CD8 and Prolif T cells)"),
-("44+", ["ann_finest_level:AT2"], [], "AT2"),
-("7+", ["ann_finest_level:AT1"], [], "AT1"),
-("13+", ["ann_finest_level:AT0|AT2 proliferating|AT1|AT2|pre-TB secretory"], [], "AT0 + AT2 proliferating"),
-("46+", ["ann_finest_level:AT0|pre-TB secretory"], [], "AT0 + pre-TB secretery"),
-("61-", ["ann_finest_level:Goblet|pre-TB secretory|Club \(non\-nasal\)"], ["genes:SCGB1A1,SCGB3A1,TMEM45A", "genes#Airway epithelium@ann_level_2:SCGB1A1,SCGB3A1,TMEM45A"], "SCGB1A1 marker gene (covers parts of Club, Goblet, Deuterosomal, pre-TB secretory, Multiciliated cells)"),
-("34-", ["ann_finest_level:Goblet|Club"], ["genes:WFDC2,SLPI,BPIFA1", "genes#Airway epithelium@ann_level_2:WFDC2,SLPI,BPIFA1"], "/TODO (Goblet + Club + SMG duct + ...)"),
-("6-", [], ["genes:MUC5AC,MSMB,BPIFB1", "genes#Airway epithelium@ann_level_2:MUC5AC,MSMB,BPIFB1"], "Goblet cells + SMG mucous (little expression from Club + ...)"),
-("20-", ["ann_finest_level:Tuft"], [], "Tuft + little expression on other CTs"),
-("20+", ["ann_finest_level:SMG serous"], [], "SMG serous (nasal + bronchial)"),
-("19-", ["ann_level_2:Submucosal Gland", "ann_finest_level:SMG"], [], "Submucosal Gland (in level 2 annotations)"),
-("19+", ["ann_finest_level:EC arterial|EC venous"], [], "EC subtypes"),
-("60+", ["ann_finest_level:SMG mucous"], [], "SMG mucous"),
-("60-", ["ann_finest_level:EC general capillary"], [], "EC general Capillary (+ little expression on other ECs)"),
-("59-", ["ann_finest_level:Classical monocytes"], [], "Classical monocytes (+ little expression on other CTs)"),
-("3-", ["ann_finest_level:Ionocyte|Neuroendocrine"], [], "Ionocytes + Neuroendocrine"),
-("35+", ["ann_finest_level:Plasma cells"], [], "Plasma cells"),
-("8+", ["ann_finest_level:Deuterosomal"], [], "Deuterosomal"),
-("52+", ["ann_level_3:Multiciliated lineage", "ann_finest_level:Multiciliated|Deuterosomal"], [], "Multiciliated lineage"),
-("42+", ["ann_level_3:B cell lineage", "ann_finest_level:B cells|Plasmacytoid"], [], "B Cells + Plasmacytoids DCs + HPSC + fraction of plasma cells"),
-("51+", ["ann_finest_level:Migratory DCs"], [], "Migratory DCs"),
-("10-", ["ann_finest_level:DC1"], [], "DC1"),
-("47+", ["ann_finest_level:DC2|DC|Interstitial Mph perivascular|Hematopoietic"], [], "DC2 (+ expression on other DCs and Interstitial Mph perivascular + HPSC)"),
-("23+", ["ann_finest_level:Mast cells|Hematopoietic"], [], "Mast Cells + HPSC"),
-("64+", ["ann_finest_level:Mesothelium|Subpleural fibroblasts"], [], "Mesothelium + Subpleural fibroblasts"),
-("9-", ["ann_level_2:Fibroblast lineage", "ann_finest_level:Adventitial fibroblasts|Subpleural fibroblasts|Peribronchial fibroblasts"], [], "Peribronchial fibroblasts + Advential fibroblasts + Subpleural fibroblasts (+ little expression on other fibroblasts and Mesothelium)"),
-("57+", ["ann_level_2:Fibroblast lineage", "ann_finest_level:fibroblasts"], [], "Fibroblasts (- adventitial fibroblasts)"),
-("17-", ["ann_finest_level:Smooth muscle|SM activ|Pericytes"], [], "Smooth Muscle (+ little expression on pericytes + Myofibroblasts)"),
-("49-", ["ann_finest_level:Hillock-like"], [], "Hillock-like (+ some others)"),
-("33-", ["ann_level_3:Lymphatic EC|EC capillary", "ann_finest_level:Lymphatic EC|EC aerocyte capillary"], [], "Lymphatic EC (+ little expression of EC aerocyte capilliary)"),
-("56-", ["ann_finest_level:Non-classical monocytes"], [], "Non-classical monocytes (and little expression on monocytes)"),
-("53-", ["ann_finest_level:Basal resting"], [], "Basal resting (KRT17, KRT15, BCAM genes)"),
-("12-", ["ann_level_3:Macrophages", "ann_finest_level:macrophages|Mph"], [], "Macrophages"),
-("31+", [], ["genes:ERRFI1,TNFRSF12A,CCN1", "genes#Airway epithelium@ann_level_2:ERRFI1,TNFRSF12A,CCN1"], "represents TNFRSF12A, ERRFI1, CCN1"),
-("14+", [], ["genes:RARRES1,SAA1,SAA2", "genes#Airway epithelium@ann_level_2:RARRES1,SAA1,SAA2"], "SAA and RARRES1 -> limited to epithelial cells"),
-("40-", [], ["genes:SPRR3,C15orf48", "genes#Airway epithelium@ann_level_2:SPRR3,C15orf48"], "/SOSO (some correlations with SPRR3, C15orf48)"),
-("59+", [], ["genes:KRT14,CLU,KRT5", "genes#Airway epithelium@ann_level_2:KRT14,CLU,KRT5"], "/SOSO (some correlations with KRT14, CLU)"),
-("47-", [], ["genes:KRT19", "genes#Airway epithelium@ann_level_2:KRT19"], "/SOSO (some correlations with very high expression of KRT19)"),
-("1+", [], ["genes:S100A8,S100A9,S100A7", "genes#Airway epithelium@ann_level_2:S100A8,S100A9,S100A7"], "S100 proteins"),
-("11+", [], ["genes:CLDN4,PLAU,PLAUR", "genes#Airway epithelium@ann_level_2:CLDN4,PLAU,PLAUR"], "Claudin-4 gene"),
-("11-", [], ["genes:S100A4,S100A8,S100A9", "genes#Myeloid@ann_level_2:S100A4,S100A8,S100A9"], "/SOSO (low expression of some genes like S100A4, S100A8, S100A9)"),
-("18+", [], ["genes:CXCL2,ICAM1,SOD2", "genes#Myeloid@~ann_level_2:CXCL2,ICAM1,SOD2"], "IL-17 signaling pathway / TNF signaling pathway"),
-("4-", [], ["genes:IFI27", "genes#Myeloid@ann_level_2:IFI27"], "IFI27+ macrophages"),
-("50+", [], ["genes:SELENOP,RNASE1,STAB1", "genes#Myeloid@ann_level_2:SELENOP,RNASE1,STAB1"], "Resident macrophages (RNASE1, STAB1, F13A1, FOLR2)"),
-("37+", [], ["genes:CCL3,CCL4,CCL4L2", "genes#Myeloid@ann_level_2:CCL3,CCL4,CCL4L2"], "MIP-1α/CCL3"),
-("32+", [], ["genes:JUN,FOSB,FOS"], "FOS, FOSB, JUN coexpression"),
-("32-", [], ["genes:SPRR1B,SPRR2A,KRT13"], "Keratinization, Small proline-rich proteins (SPRP)"),
-("36+", [], ["genes:C1QA,C1QB,C1QC"], "C1Q complex "),
-("36-", [], ["genes:C11orf96,CRISPLD2", "genes#Fibroblast|Smooth muscle@ann_level_2:C11orf96,CRISPLD2"], "C11orf96 and CRISPLD2 expression in Fibroblast lineage"),
-("3+", [], ["genes:EREG,IL1B,IL1RN"], "EREG / Interlukin sugnaling"),
-("27+", [], ["genes:CXCL10,CXCL9,CXCL11"], "Inflammation CXCL9, CXCL10, CXCL11 / GBP1, GBP4, GBP5 / IDO1 / ..."),
-("38-", [], ["genes:ISG15,IFI6,IFITM3"], "Interferon alpha/beta signaling"),
-("30+", [], ["genes:SAA1,SAA2,LCN2"], "SAA and LNC2 (Maybe antibacterial response) -> limited to Multiciliated cells"),
-("5-", [], ["genes:HBB,HBA2,HBA1"], "Hemoglobin metabolic process"),
-("24+", [], ["genes:MMP10,MMP1,MMP13"], "MMP10, MMP1, MMP13 (matrix metalloproteinases)"),
-("26-", [], ["genes:CLCA4,CALML3,CSTA"], "Some tumor supression genes: CLCA4, CSTA, CALML3, and LYPB3"),
-("10+", [], ["genes:DNAAF1,IFI27"], "Multiciliated Lineage (shade towards DNAAF1)"),
-("16+", [], ["genes:KRT14"], "/SOSO (some correlations with KRT14)"),
-("16-", [], ["genes:SERPINB3,FAM3D"], "/SOSO (some correlations with SERPINB3)"),
-("63+", [], ["genes:MT1G,MT1X,MT1E,MT2A"], "MT+ (stress response to metal ion)"),
-("9+", [], ["genes:HLA-DRA,HLA-DRB1,HLA-DPA1"], "MHC class II protein complex (HLA genes)"),
-("56+", [], ["genes:CCL2,SERPINE1,CX3CL1", "genes#Blood@ann_level_2:CCL2,SERPINE1,CX3CL1"], "CCL2+ blood cells"),
-("45-", [], ["genes:ANKRD36C", "genes#Goblet@ann_finest_level:ANKRD36C"], "ANKRD36C+ Goblet cells"),
-("25+", ["ann_finest_level:proliferating"], [], "[Share Process] Proliferation"),
-
-]
-# -
-
-
-
-
-def plot_dim_info(embed, dim_info, kde=False, gene_added_noise=0.1, save_dir=None):
-    for dim_str, ct_info, gene_info, desc in dim_info:
-        print(dim_str)
-        print(desc)
-        dim, direction = _m1(int(dim_str[:-1])), dim_str[-1]
-        if direction == '+':
-            cmap = saturated_sky_cmap
-        else:
-            cmap = saturated_sky_cmap.reversed()
-        fig = plot_latent_dims_in_umap(embed, dims=[dim], vcenter=0, cmap=cmap, show=False)
-        for ax in fig.axes:
-            ax.text(0.92, 0.05, ax.get_title(), size=15, ha='left', color='black', rotation=90, transform=ax.transAxes)
-            ax.set_title("")
-        if save_dir is not None:
-            plt.savefig(save_dir / f"dim_info_{dim_str}__dim_on_umap.pdf", bbox_inches='tight')
-        plt.show()
-        if len(ct_info) > 0:
-            for ct_info_str in ct_info:
-                col = ct_info_str.split(":")[0]
-                groups = list(embed.obs[col][embed.obs[col].str.contains(ct_info_str.split(":")[1], regex=True)].unique())
-                if len(groups) == 0:
-                    print(ct_info_str.split(":")[1])
-                    print(groups)
-                    raise ValueError()
-                unique_values = list(sorted(list(embed.obs[col].astype(str).unique())))
-                # if len(unique_values) <= 8:
-                #     palette = dict(zip(unique_values, wong_pallete))
-                if len(unique_values) <= 10:
-                    palette = dict(zip(unique_values, cat_10_pallete))
-                elif len(unique_values) <= 20:
-                    palette = dict(zip(unique_values, cat_20_pallete))
-                elif len(unique_values) <= 102:
-                    palette = dict(zip(unique_values, cat_100_pallete))
-                else:
-                    palette = None
-                sc.pl.umap(embed,
-                           title=col_mapping[col],
-                           palette=palette,
-                           color=[col], 
-                           groups=groups,
-                           frameon=False,
-                           na_in_legend=False)
-        if len(gene_info) > 0:
-            for gene_info_str in gene_info:
-                if gene_info_str.startswith("genes"):
-                    condition = gene_info_str.split(":")[0].split("#")
-                    print(gene_info_str)
-                    condition = condition[1] if len(condition) > 1 else ""
-                    gene_info_str = gene_info_str.split(":")[-1]
-                    genes = gene_info_str.split(",")
-                    col = ""
-                    if condition == "":
-                        adata_subset = adata
-                    else:
-                        print(f"Limiting to {condition}")
-                        col = condition.split("@")[-1]
-                        if col.startswith("~"):
-                            col = col[1:]
-                            groups = list(embed.obs[col][~(embed.obs[col].str.contains(condition.split("@")[0], regex=True))].unique())
-                        else:
-                            groups = list(embed.obs[col][embed.obs[col].str.contains(condition.split("@")[0], regex=True)].unique())
-                        adata_subset = adata[adata.obs[col].isin(groups)]
-                    axes = sc.pl.embedding(
-                        adata_subset, 'X_umap_drvi', color=genes,
-                        cmap=saturated_just_sky_cmap,
-                        frameon=False, show=False,
-                    )
-                    if len(genes) == 1:
-                        axes = [axes]
-                    for ax in axes:
-                        ax.text(0.92, 0.05, ax.get_title(), size=15, ha='left', color='black', rotation=90, transform=ax.transAxes)
-                        ax.set_title("")
-                    if save_dir is not None:
-                        plt.savefig(save_dir / f"dim_info_{dim_str}{'' if col == '' else f'_{col}'}__exp_on_umap.pdf", bbox_inches='tight')
-                    plt.show()
-                    
-                    df = pd.DataFrame({**{
-                        g: adata_subset[:, g].X.A.flatten() + np.random.randn(adata_subset.n_obs) * gene_added_noise
-                        for g in genes},
-                        f'Dim {dim+1}': embed_drvi[adata_subset.obs.index].X[:, dim].flatten()
-                    })
-                    
-                    if kde:
-                        df = df.sample(frac=1/10)
-                    df = pd.melt(df, id_vars=[f'Dim {dim+1}'], value_vars=genes, var_name='Gene', value_name='Expression')
-                    g = sns.FacetGrid(df, col="Gene", aspect=0.8, sharex=False)
-                    alpha = 1 / (df[f'Dim {dim+1}'] > 2).mean() / 500 if direction == '+' else 1 / (df[f'Dim {dim+1}'] < -2).mean() / 500
-                    alpha = alpha * adata.n_obs / df.shape[0]
-                    if kde:
-                        g.map(sns.scatterplot, f'Dim {dim+1}', "Expression", color='grey', alpha=min([1, alpha]), s=1, linewidth=0, rasterized=True)
-                        g.map(sns.kdeplot, f'Dim {dim+1}', "Expression")
-                    else:
-                        g.map(sns.scatterplot, f'Dim {dim+1}', "Expression", alpha=min([1, alpha]), s=1, linewidth=0, rasterized=True)
-                    for ax in g.axes.flatten():
-                        ax.grid(False)
-                    if direction == '+':
-                        g.set(xlim=(-1, None))
-                    else:
-                        g.set(xlim=(None, +1))
-                    if save_dir is not None:
-                        plt.tight_layout()
-                        g.fig.savefig(save_dir / f"dim_info_{dim_str}{'' if col == '' else f'_{col}'}__exp_vs_dim_scatter.pdf", bbox_inches='tight')
-                    plt.show()
-
-                    adata_subset = adata_subset.copy()
-                    adata_subset.obs[f'Discretized dim {dim}'] = list(embed_drvi[adata_subset.obs.index].X[:, dim].flatten())
-                    dim_max = adata_subset.obs[f'Discretized dim {dim}'].max()
-                    dim_min = adata_subset.obs[f'Discretized dim {dim}'].min()
-                    gap = 4.
-                    bins = []
-                    while len(bins) < 5:
-                        if direction == '+':
-                            bins = [np.floor(dim_min)] + list(np.arange(0, dim_max + gap / 2, gap))
-                            if bins[-1] < dim_max:
-                                bins[-1] += 1
-                        else:
-                            bins = list(-np.arange(0, -dim_min + gap / 2, gap)[::-1]) + [np.ceil(dim_max)]
-                            if bins[0] > dim_min:
-                                bins[0] -= 1
-                        gap /= 2
-                    if gap >= 1.:
-                        bins = np.asarray(bins).astype(int)
-                    adata_subset.obs[f'Discretized dim {dim}'] = pd.cut(adata_subset.obs[f'Discretized dim {dim}'], bins=bins, right=False, precision=0)
-                    adata_subset.obs[f'Discretized dim {dim}'] = adata_subset.obs[f'Discretized dim {dim}'].astype('category')
-                    n_colors = len(adata_subset.obs[f'Discretized dim {dim}'].unique())
-                    palette = sns.color_palette("light:#00c8ff", n_colors=n_colors, as_cmap=False)
-                    if direction == '-':
-                        palette = palette[::-1]
-                    axes = sc.pl.violin(adata_subset, keys=genes, groupby=f'Discretized dim {dim}', palette=palette, stripplot=False, jitter=False, rotation=90, show=False, 
-                                        xlabel=f"Dim {dim+1}" if condition == "" else f"Dim {dim+1} limited to " + ("any cell\nbut " if col.startswith("~") else "") + condition.split("@")[0].replace(",", " & "))
-                    if len(genes) == 1:
-                        axes = [axes]
-                    for ax in axes:
-                        ax.grid(False)
-                        ax.tick_params(axis='both', which='major', labelsize=14)
-                        ax.xaxis.label.set_fontsize(14)
-                    if save_dir is not None:
-                        plt.savefig(save_dir / f"dim_info_{dim_str}{'' if col == '' else f'_{col}'}__exp_vs_dim_violin.pdf", bbox_inches='tight')
-                    plt.show()
-
-
-sns.color_palette("dark:#00c8ff", n_colors=5, as_cmap=False)
-
-
-
-plot_dim_info(embed_drvi, dim_info)
-
-
-
-
-# +
-dim_info_new_sorting = [
-("29+", ["ann_finest_level:T cells"], [], "T cells / CD4+ T cells"),
-("54-", ["ann_finest_level:NK cells"], [], "NK cells (+ little expression on CD8 and Prolif T cells)"),
-("44+", ["ann_finest_level:AT2"], [], "AT2"),
-("7+", ["ann_finest_level:AT1"], [], "AT1"),
-("13+", ["ann_finest_level:AT0|AT2 proliferating|AT1|AT2|pre-TB secretory"], [], "AT0 + AT2 proliferating"),
-("46+", ["ann_finest_level:AT0|pre-TB secretory"], [], "AT0 + pre-TB secretery"),
-("61-", ["ann_finest_level:Goblet|pre-TB secretory|Club \(non\-nasal\)"], ["genes:SCGB1A1,SCGB3A1,TMEM45A", "genes#Airway epithelium@ann_level_2:SCGB1A1,SCGB3A1,TMEM45A"], "SCGB1A1 marker gene (covers parts of Club, Goblet, Deuterosomal, pre-TB secretory, Multiciliated cells)"),
-("34-", ["ann_finest_level:Goblet|Club"], ["genes:WFDC2,SLPI,BPIFA1", "genes#Airway epithelium@ann_level_2:WFDC2,SLPI,BPIFA1"], "/TODO (Goblet + Club + SMG duct + ...)"),
-("6-", [], ["genes:MUC5AC,MSMB,BPIFB1", "genes#Airway epithelium@ann_level_2:MUC5AC,MSMB,BPIFB1"], "Goblet cells + SMG mucous (little expression from Club + ...)"),
-("20-", ["ann_finest_level:Tuft"], [], "Tuft + little expression on other CTs"),
-("20+", ["ann_finest_level:SMG serous"], [], "SMG serous (nasal + bronchial)"),
-("19-", ["ann_level_2:Submucosal Gland", "ann_finest_level:SMG"], [], "Submucosal Gland (in level 2 annotations)"),
-("19+", ["ann_finest_level:EC arterial|EC venous"], [], "EC subtypes"),
-("60+", ["ann_finest_level:SMG mucous"], [], "SMG mucous"),
-("60-", ["ann_finest_level:EC general capillary"], [], "EC general Capillary (+ little expression on other ECs)"),
-("59-", ["ann_finest_level:Classical monocytes"], [], "Classical monocytes (+ little expression on other CTs)"),
-("3-", ["ann_finest_level:Ionocyte|Neuroendocrine"], [], "Ionocytes + Neuroendocrine"),
-("35+", ["ann_finest_level:Plasma cells"], [], "Plasma cells"),
-("8+", ["ann_finest_level:Deuterosomal"], [], "Deuterosomal"),
-("52+", ["ann_level_3:Multiciliated lineage", "ann_finest_level:Multiciliated|Deuterosomal"], [], "Multiciliated lineage"),
-("42+", ["ann_level_3:B cell lineage", "ann_finest_level:B cells|Plasmacytoid"], [], "B Cells + Plasmacytoids DCs + HPSC + fraction of plasma cells"),
-("51+", ["ann_finest_level:Migratory DCs"], [], "Migratory DCs"),
-("10-", ["ann_finest_level:DC1"], [], "DC1"),
-("47+", ["ann_finest_level:DC2|DC|Interstitial Mph perivascular|Hematopoietic"], [], "DC2 (+ expression on other DCs and Interstitial Mph perivascular + HPSC)"),
-("23+", ["ann_finest_level:Mast cells|Hematopoietic"], [], "Mast Cells + HPSC"),
-("64+", ["ann_finest_level:Mesothelium|Subpleural fibroblasts"], [], "Mesothelium + Subpleural fibroblasts"),
-("9-", ["ann_level_2:Fibroblast lineage", "ann_finest_level:Adventitial fibroblasts|Subpleural fibroblasts|Peribronchial fibroblasts"], [], "Peribronchial fibroblasts + Advential fibroblasts + Subpleural fibroblasts (+ little expression on other fibroblasts and Mesothelium)"),
-("57+", ["ann_level_2:Fibroblast lineage", "ann_finest_level:fibroblasts"], [], "Fibroblasts (- adventitial fibroblasts)"),
-("17-", ["ann_finest_level:Smooth muscle|SM activ|Pericytes"], [], "Smooth Muscle (+ little expression on pericytes + Myofibroblasts)"),
-("49-", ["ann_finest_level:Hillock-like"], [], "Hillock-like (+ some others)"),
-("33-", ["ann_level_3:Lymphatic EC|EC capillary", "ann_finest_level:Lymphatic EC|EC aerocyte capillary"], [], "Lymphatic EC (+ little expression of EC aerocyte capilliary)"),
-("56-", ["ann_finest_level:Non-classical monocytes"], [], "Non-classical monocytes (and little expression on monocytes)"),
-("53-", ["ann_finest_level:Basal resting"], [], "Basal resting (KRT17, KRT15, BCAM genes)"),
-("12-", ["ann_level_3:Macrophages", "ann_finest_level:macrophages|Mph"], [], "Macrophages"),
-("31+", [], ["genes:ERRFI1,TNFRSF12A,CCN1", "genes#Airway epithelium@ann_level_2:ERRFI1,TNFRSF12A,CCN1"], "represents TNFRSF12A, ERRFI1, CCN1"),
-("14+", [], ["genes:RARRES1,SAA1,SAA2", "genes#Airway epithelium@ann_level_2:RARRES1,SAA1,SAA2"], "SAA and RARRES1 -> limited to epithelial cells"),
-("30+", [], ["genes:SAA1,SAA2,LCN2"], "SAA and LNC2 (Maybe antibacterial response) -> limited to Multiciliated cells"),
-("40-", [], ["genes:SPRR3,C15orf48", "genes#Airway epithelium@ann_level_2:SPRR3,C15orf48"], "/SOSO (some correlations with SPRR3, C15orf48)"),
-("32-", [], ["genes:SPRR1B,SPRR2A,KRT13"], "Keratinization, Small proline-rich proteins (SPRP)"),
-("32+", [], ["genes:JUN,FOSB,FOS"], "FOS, FOSB, JUN coexpression"),
-("59+", [], ["genes:KRT14,CLU,KRT5", "genes#Airway epithelium@ann_level_2:KRT14,CLU,KRT5"], "/SOSO (some correlations with KRT14, CLU)"),
-("47-", [], ["genes:KRT19", "genes#Airway epithelium@ann_level_2:KRT19"], "/SOSO (some correlations with very high expression of KRT19)"),
-("1+", [], ["genes:SPRR2D,SPRR1B,SPRR3,S100A8,S100A9,S100A7", "genes#Airway epithelium@ann_level_2:SPRR2D,SPRR1B,SPRR3,S100A8,S100A9,S100A7"], "S100 proteins"),
-("11-", [], ["genes:S100A4,S100A8,S100A9", "genes#Myeloid@ann_level_2:S100A4,S100A8,S100A9"], "/SOSO (low expression of some genes like S100A4, S100A8, S100A9)"),
-("11+", [], ["genes:CLDN4,PLAU,PLAUR", "genes#Airway epithelium@ann_level_2:CLDN4,PLAU,PLAUR"], "Claudin-4 gene"),
-("18+", [], ["genes:CXCL1,CXCL2,ICAM1", "genes#Myeloid@~ann_level_2:CXCL1,CXCL2,ICAM1"], "IL-17 signaling pathway / TNF signaling pathway"),
-("4-", [], ["genes:IFI27", "genes#Myeloid@ann_level_2:IFI27"], "IFI27+ macrophages"),
-("50+", [], ["genes:SELENOP,RNASE1,STAB1", "genes#Myeloid@ann_level_2:SELENOP,RNASE1,STAB1"], "Resident macrophages (RNASE1, STAB1, F13A1, FOLR2)"),
-("37+", [], ["genes:CCL3,CCL4,CCL4L2", "genes#Myeloid@ann_level_2:CCL3,CCL4,CCL4L2"], "MIP-1α/CCL3"),
-("36+", [], ["genes:C1QA,C1QB,C1QC"], "C1Q complex "),
-("36-", [], ["genes:C11orf96,CRISPLD2", "genes#Fibroblast|Smooth muscle@ann_level_2:C11orf96,CRISPLD2"], "C11orf96 and CRISPLD2 expression in Fibroblast lineage"),
-("3+", [], ["genes:EREG,IL1B,IL1RN"], "EREG / Interlukin sugnaling"),
-("27+", [], ["genes:CXCL10,CXCL9,CXCL11"], "Inflammation CXCL9, CXCL10, CXCL11 / GBP1, GBP4, GBP5 / IDO1 / ..."),
-("38-", [], ["genes:ISG15,IFI6,IFITM3"], "Interferon alpha/beta signaling"),
-("5-", [], ["genes:HBB,HBA2,HBA1"], "Hemoglobin metabolic process"),
-("24+", [], ["genes:MMP10,MMP1,MMP13"], "MMP10, MMP1, MMP13 (matrix metalloproteinases)"),
-("26-", [], ["genes:CLCA4,CALML3,CSTA"], "Some tumor supression genes: CLCA4, CSTA, CALML3, and LYPB3"),
-("10+", [], ["genes:DNAAF1"], "Multiciliated Lineage (shade towards DNAAF1)"),
-("16+", [], ["genes:KRT14"], "/SOSO (some correlations with KRT14)"),
-("16-", [], ["genes:SERPINB3"], "/SOSO (some correlations with SERPINB3)"),
-("63+", [], ["genes:MT1G,MT1X,MT1E,MT2A"], "MT+ (stress response to metal ion)"),
-("9+", [], ["genes:HLA-DRA,HLA-DRB1,HLA-DPA1"], "MHC class II protein complex (HLA genes)"),
-("56+", [], ["genes:CCL2,SERPINE1,CX3CL1", "genes#Blood@ann_level_2:CCL2,SERPINE1,CX3CL1"], "CCL2+ immune cells"),
-("45-", [], ["genes:ANKRD36C", "genes#Goblet@ann_finest_level:ANKRD36C"], "ANKRD36C+ Goblet cells"),
-("25+", ["ann_finest_level:proliferating"], [], "[Share Process] Proliferation"),
-
-]
-
-# +
-plot_dims = [[], []]
-ct_dims = []
-plot_cts = []
-
-for dim_str, ct_info, gene_info, desc in dim_info_new_sorting:
-    dim, direction = _m1(int(dim_str[:-1])), dim_str[-1]
-    if direction == '+':
-        cmap = 'RdGy_r'
-    else:
-        cmap = 'RdGy'
-    if len(ct_info) > 0:
-        plot_dims[0].append(dim)
-        ct_dims.append(dim)
-        for ct_info_str in ct_info:
-            col = ct_info_str.split(":")[0]
-            groups = list(embed.obs[col][embed.obs[col].str.contains(ct_info_str.split(":")[1], regex=True)].unique())
-            if len(groups) == 0:
-                print(ct_info_str.split(":")[1])
-                print(groups)
-                raise ValueError()
-            unique_values = list(sorted(list(embed.obs[col].astype(str).unique())))
-            if col == cell_type_key:
-                print(col, groups)
-                plot_cts += groups
-    if len(gene_info) > 0:
-        plot_dims[0].append(dim)
-
-plot_dims = plot_dims[0] + plot_dims[1]
-
-# +
+model = model_drvi
 embed = embed_drvi
-unique_plot_dims = list(collections.OrderedDict.fromkeys(plot_dims))
-unique_plot_dims += [int(c) for c in embed.uns['optimal_var_order'] if c not in unique_plot_dims]
-unique_plot_cts = list(collections.OrderedDict.fromkeys(plot_cts))
-unique_plot_cts += [ct for ct in embed.obs[cell_type_key].unique() if ct not in unique_plot_cts]
 
-embed_subset = embed[embed.obs[cell_type_key].isin(unique_plot_cts)].copy()
-embed_subset = make_balanced_subsample(embed_subset, cell_type_key, min_count=20)
-embed_subset.obs[cell_type_key] = pd.Categorical(embed_subset.obs[cell_type_key], unique_plot_cts)
-embed_subset = embed_subset[embed_subset.obs.sort_values(cell_type_key).index].copy()
-embed_subset.var['dim_repr'] = 'Dim ' + (embed_subset.var.index.astype(int) + 1).astype(str)
-embed_subset.var['Cell-type indicator'] = np.where(embed_subset.var.index.isin(ct_dims), 'Yes', 'No')
-embed_subset = embed_subset
-embed_subset = embed_subset[np.argsort(embed_subset.obsm['X_pca'][:, 0])]
+drvi.utils.tl.set_latent_dimension_stats(model, embed)
+drvi.utils.pl.plot_latent_dimension_stats(embed, ncols=2)
+
+filename = RUNS_TO_LOAD['DRVI'] / "traverse_adata.h5ad"
+if not (filename).exists():
+    traverse_adata = drvi.utils.tl.traverse_latent(model, embed, n_samples=200, max_noise_std=0.2)
+    drvi.utils.tl.calculate_differential_vars(traverse_adata)
+    traverse_adata.write(filename)
+else:
+    traverse_adata = sc.read(filename)
+traverse_adata
+
+# ## Heatmap for figure
+
+# +
+# Plot heatmap again for DRVI fig3 with little better sorting and using DR notation for dimensions
+
+ct_dims = ['DR 3', 'DR 7', 'DR 2', 'DR 17', 'DR 34', 'DR 32', 'DR 20', 'DR 14', 'DR 23', 'DR 1', 'DR 8', 'DR 9', 'DR 11', 'DR 27', 'DR 31', 'DR 45', 'DR 5', 'DR 19', 'DR 39', 'DR 30', 'DR 10', 'DR 15', 'DR 47', 'DR 16', 'DR 13', 'DR 18', 'DR 26', 'DR 12', 'DR 22', 'DR 6', 'DR 4']
+process_dims = ['DR 21', 'DR 24', 'DR 25', 'DR 28', 'DR 29', 'DR 33', 'DR 35', 'DR 36', 'DR 37', 'DR 38', 'DR 40', 'DR 41', 'DR 42', 'DR 43', 'DR 44', 'DR 46', 'DR 48', 'DR 49', 'DR 50', 'DR 54', 'DR 64']
+
+unique_plot_dims = list(reversed(ct_dims + process_dims))
+
+method_embed_subset = embed[embed_subset.obs.index].copy()
+method_embed_subset.var['Cell-type indicator'] = np.where(method_embed_subset.var['title'].isin(ct_dims), 'Yes', 'No')
 # -
 
-k = cell_type_key
-unique_values = list(sorted(list(embed.obs[k].astype(str).unique())))
-palette = dict(zip(unique_values, cat_100_pallete))
-embed_subset.uns[k + "_colors"] = 'black'
-fig = sc.pl.heatmap(
-    embed_subset,
-    embed_subset.var.iloc[unique_plot_dims]['dim_repr'],
-    k,
-    layer=None,
-    gene_symbols='dim_repr',
-    var_group_positions=[(0,30), (31, 51), (52, 63)],
-    var_group_labels=['Cell-type indicator', 'Biological Process', 'Vanished'],
-    var_group_rotation=0,
-    figsize=(10, len(embed.obs[k].unique()) / 6),
-    show_gene_labels=True,
-    dendrogram=False,
-    vcenter=0, vmin=-4, vmax=4,
-    cmap='RdBu_r', show=False,
-    swap_axes=False,
-)
-fig['groupby_ax'].set_ylabel('Finest level annotation')
-fig['groupby_ax'].get_images()[0].remove()
-pos = fig['groupby_ax'].get_position()
-pos.x0 += 0.0175
-fig['groupby_ax'].set_position(pos)
-plt.savefig(proj_dir / "plots" / "hlca_analysis" / f"ct_vs_dim_heatmap.pdf", bbox_inches='tight')
-plt.show()
+assert len([ct for ct in unique_plot_cts if ct not in embed_drvi.obs[cell_type_key].unique()]) == 0
+assert len([ct for ct in embed_drvi.obs[cell_type_key].unique() if ct not in unique_plot_cts]) == 0
 
 k = cell_type_key
 unique_values = list(sorted(list(embed.obs[k].astype(str).unique())))
 palette = dict(zip(unique_values, cat_100_pallete))
-embed_subset.uns[k + "_colors"] = 'black'
+method_embed_subset.uns[k + "_colors"] = 'black'
+unique_values = list(sorted(list(method_embed_subset.obs[k].astype(str).unique())))
+palette = dict(zip(unique_values, cat_100_pallete))
+method_embed_subset.obs[cell_type_key] = pd.Categorical(method_embed_subset.obs[cell_type_key], unique_plot_cts)
+method_embed_subset = method_embed_subset[np.argsort(method_embed_subset.obs[cell_type_key].cat.codes)]
 fig = sc.pl.heatmap(
-    embed_subset,
-    embed_subset.var.iloc[unique_plot_dims]['dim_repr'][::-1],
+    method_embed_subset,
+    unique_plot_dims[::-1],
     k,
     layer=None,
-    gene_symbols='dim_repr',
+    gene_symbols='title',
     # var_group_positions=[(0,30), (31, 51), (52, 63)],
     # var_group_labels=['Cell-type indicator', 'Biological Process', 'Vanished'],
     # var_group_rotation=0,
-    figsize=(10, 10),
+    figsize=(10, 8),
     show_gene_labels=True,
     dendrogram=False,
     vcenter=0, vmin=-4, vmax=4,
     cmap='RdBu_r', show=False,
     swap_axes=True,
 )
-fig['groupby_ax'].set_xlabel('Finest level annotation')
+# fig['groupby_ax'].set_xlabel('Finest level annotation')
+fig['groupby_ax'].set_xlabel('')
 fig['groupby_ax'].get_images()[0].remove()
 pos = fig['groupby_ax'].get_position()
 pos.y0 += 0.015
@@ -2278,128 +294,523 @@ cbar = fig['heatmap_ax'].figure.get_axes()[-1]
 pos = cbar.get_position()
 # cbar.set_position([1., 0.77, 0.01, 0.13])
 cbar.set_position([.95, 0.001, 0.01, 0.14])
-plt.savefig(proj_dir / "plots" / "hlca_analysis" / f"ct_vs_dim_heatmap_rotared.pdf", bbox_inches='tight')
+plt.savefig(output_dir / f"ct_vs_dim_heatmap_rotared.pdf", bbox_inches='tight')
+plt.show()
+
+# ## Interpretability
+
+drvi.utils.pl.show_top_differential_vars(traverse_adata, key="combined_score", score_threshold=0.0)
+
+# ## Interpret each non-cell-type dimension
+
+interesting_dims = [
+    "DR 27+", "DR 30+", "DR 10-", "DR 16+", "DR 22+", "DR 21-", "DR 24+", "DR 25-", "DR 28+", "DR 28-", 
+    "DR 29+", "DR 29-", "DR 33+", "DR 35+", "DR 35-", "DR 36-", "DR 37-", "DR 38+", "DR 40+", "DR 41+", 
+    "DR 42+", "DR 43+", "DR 44+", "DR 46+", "DR 48+", "DR 49-", "DR 50+", "DR 54-", "DR 64-" 
+]
+fig = drvi.utils.pl.show_top_differential_vars(traverse_adata, key="combined_score", dim_subset=interesting_dims, score_threshold=0.0, show=False)
+plt.tight_layout()
+fig.savefig(output_dir / f'drvi_interpretability_for_process_dimensions.pdf', bbox_inches='tight', dpi=200)
+plt.show()
+
+fig = drvi.utils.pl.plot_latent_dims_in_umap(embed, directional=True, ncols=5, show=False, wspace=0.1, hspace=0.25, color_bar_rescale_ratio=0.95,
+                                             dim_subset=interesting_dims)
+fig.savefig(output_dir / f'drvi_interesting_nonct_latents_on_umap.pdf', bbox_inches='tight', dpi=300)
 plt.show()
 
 
 
-
-
-
-
-
-
-for i in range(0, len(adata.obs.columns), 10):
-    display(embed_drvi[embed_drvi[:, 30].X > 2].obs.iloc[:, i:i+10])
+# ## GSEA for all dims
 
 # +
+gp = GProfiler(return_dataframe=True)
 
-sc.pl.embedding(adata, 'X_umap_drvi', color=['study'], groups=['Nawijn_2021'], ncols=1)
+for dim_title, gene_scores in drvi.utils.tl.iterate_on_top_differential_vars(
+    traverse_adata, key="combined_score", score_threshold=0.0,
+):
+    print(dim_title)
+
+    gene_scores = gene_scores[gene_scores > gene_scores.max() / 10]
+    print(gene_scores)
+
+    relevant_genes = gene_scores.index.to_list()[:100]
+
+    relevant_pathways = gp.profile(
+        organism="hsapiens", query=relevant_genes, background=list(adata.var.index), domain_scope="custom"
+    )
+    display(relevant_pathways[:10])
 # -
 
-sc.pl.embedding(adata, 'X_umap_drvi', color=['suspension_type', 'age_or_mean_of_age_range', 'anatomical_region_ccf_score', 'smoking_status', 'disease', 'fresh_or_frozen', 'lung_condition', 'mixed_ancestry', 'reference_genome', 'subject_type', 'tissue_dissociation_protocol', 'sex', 'development_stage', 'tissue'], ncols=1)
 
 
-
-
-
-show_dims = [
-    18,
-    32,
-    4,
-    38,
-    18,
-    27,
-    1,
-    63
-]
-len(show_dims)
-
-plot_dim_info(embed_drvi, [di for di in dim_info_new_sorting if int(di[0][:-1]) in show_dims],
-              kde=False,
-              save_dir = proj_dir / "plots" / "hlca_analysis")
-
-
-
-
-
-
-
-# # Cleaned Interpretability module
-
-effect_adata = sc.read(RUNS_TO_LOAD['DRVI'] / 'effect_adata.h5ad')
-effect_adata
+# ## Specifically plot some dims for main figure
 
 # +
 embed = embed_drvi
-UMAP_FRAC = 1.
 
-adata.obsm['X_umap_method'] = embed[adata.obs.index].obsm['X_umap']
-if UMAP_FRAC < 1.:
-    adata_subset = sc.pp.subsample(adata, fraction=UMAP_FRAC, copy=True)
-else:
-    adata_subset = adata
+info_to_show = [
+    (4, '-', 'IFI27', adata[adata.obs.query('ann_level_2 == "Myeloid"').index], 'Dim 64 limited to Myeloids'),
+    (32, '+', 'JUN', adata, None),
+    (63, '+', 'MT1X', adata, None),
+    (27, '+', 'CXCL10', adata, None),
+    (56, '+', 'CX3CL1', adata, None),
+]
 
-for dim in [
-    '18+',
-    '32+',
-    '4-',
-    '38-',
-    '18+',
-    '27+',
-    '1+',
-    '63+',
-]:
-    print(f'Dim {dim}')
-
-    for interpretability_method in ["interpretability", "DE"]:
-        if interpretability_method == "interpretability":
-            print("** Interpretability module **")
-            
-            relevant_up_genes = [g for g,_ in effect_adata.uns['final_affected_vars'][f'Dim {dim}']['up']]
-            relevant_down_genes = [g for g,_ in effect_adata.uns['final_affected_vars'][f'Dim {dim}']['down']]
-            print(effect_adata.uns['final_affected_vars'][f'Dim {dim}'])
-        elif interpretability_method == "DE":
-            print("** DE testing **")
-
-            de_df = pd.DataFrame({
-                'gene': effect_adata.uns['de_results'][f"DE for {dim}"]['names']['1.0'],
-                'pval': effect_adata.uns['de_results'][f"DE for {dim}"]['pvals_adj']['1.0'],
-                'logfc': effect_adata.uns['de_results'][f"DE for {dim}"]['logfoldchanges']['1.0'],
-            })
-            relevant_up_genes = de_df.query("logfc > 1").query("pval < 0.01").sort_values("logfc", ascending=False).gene.to_list()
-            # Mostly non specific
-            # relevant_down_genes = de_df.query("logfc < -1").query("pval < 0.01").sort_values("logfc").gene.to_list()
-            relevant_down_genes = []
-            print("UP:  ", relevant_up_genes)
-            print("DOWN:", relevant_down_genes)     
-    
-        for title, relevant_genes in [("UP", relevant_up_genes), ("DOWN", relevant_down_genes)]:
-            if len(relevant_genes) == 0:
-                continue
-            print(title)
-            sc.pl.heatmap(
-                effect_adata, 
-                relevant_genes[:50],
-                groupby='dim_id',
-                layer=None,
-                figsize=(10, effect_adata.uns['n_latent'] / 6),
-                # dendrogram=True,
-                vcenter=0, #vmin=-2, vmax=4,
-                show_gene_labels=True,
-                cmap='RdBu_r',
-                var_group_rotation=90,
-            )
+for i in range(3):
+    # if i != 2:
+    #     continue
         
-            plot_latent_dims_in_umap(embed, dims=[int(dim[:-1])-1], vcenter=0, cmap=saturated_red_blue_cmap)
-            sc.pl.embedding(adata_subset, 'X_umap_method', color=relevant_genes[:30], cmap=saturated_red_cmap)
-            
-            gp = GProfiler(return_dataframe=True)
-            relevant_pathways = gp.profile(organism='hsapiens', query=relevant_genes, 
-                                           background=list(adata.var.index), domain_scope='custom')
-            display(relevant_pathways[:10])
+    x = 4 * len(info_to_show)
+    figsize = [(3, x), (3, x), (3, x*1.2)][i]
+    fig, axes = plt.subplots(len(info_to_show), 1, 
+                             figsize=figsize, 
+                             squeeze=False)
     
+    for row, (dim_id, direction, gene_name, adata_subset, violin_x_title) in enumerate(info_to_show):
+        dim_id = dim_id - 1
+        dim_title = embed.var.iloc[dim_id]['title'] + direction
+        
+        if i == 0:
+            # Plot emb
+            ax = axes[row, 0]
+            embed.obs['_tmp'] = embed.X[:, dim_id].flatten().tolist()
+            sc.pl.embedding(
+                embed, 'X_umap', color='_tmp', vcenter=0, 
+                cmap=drvi.utils.pl.cmap.saturated_sky_cmap if direction == '+' else drvi.utils.pl.cmap.saturated_sky_cmap.reversed(),
+                show=False, frameon=False, ax=ax,
+            )
+            ax.text(0.92, 0.05, dim_title, size=15, ha='left', color='black', rotation=90, transform=ax.transAxes)
+            ax.set_title("")
+            # make colorbar smaller
+            # cbar_ax = fig.axes[-1]
+            # if hasattr(cbar_ax, "_colorbar"):
+            #     color_bar_rescale_ratio = 0.8
+            #     pos = cbar_ax.get_position()
+            #     new_pos = [pos.x0, pos.y0, pos.width, pos.height * color_bar_rescale_ratio]
+            #     cbar_ax.set_position(new_pos)
+            del embed.obs['_tmp']
+
+        if i == 1:
+            # Plot gene
+            ax = axes[row, 0]
+            sc.pl.embedding(
+                adata, 'X_umap_drvi', 
+                color=gene_name, cmap=drvi.utils.pl.cmap.saturated_just_sky_cmap, 
+                show=False, frameon=False, ax=ax
+            )
+            ax.text(0.92, 0.05, gene_name, size=15, ha='left', color='black', rotation=90, transform=ax.transAxes)
+            ax.set_title("")
+
+        if i == 2:
+            # Violin plot
+            ax = axes[row, 0]
+            if violin_x_title is None:
+                violin_x_title = dim_title[:-1]
+            
+            adata_subset = adata_subset.copy()
+            adata_subset.obs[f'Discretized {dim_title}'] = list(embed[adata_subset.obs.index].X[:, dim_id].flatten())
+            dim_max = adata_subset.obs[f'Discretized {dim_title}'].max()
+            dim_min = adata_subset.obs[f'Discretized {dim_title}'].min()
+            gap = 4.
+            bins = []
+            while len(bins) < 5:
+                if direction == '+':
+                    bins = [np.floor(dim_min)] + list(np.arange(0, dim_max + gap / 2, gap))
+                    if bins[-1] < dim_max:
+                        bins[-1] += 1
+                else:
+                    bins = list(-np.arange(0, -dim_min + gap / 2, gap)[::-1]) + [np.ceil(dim_max)]
+                    if bins[0] > dim_min:
+                        bins[0] -= 1
+                gap /= 2
+            gap *= 2
+            if gap >= 1.:
+                bins = np.asarray(bins).astype(int)
+            adata_subset.obs[f'Discretized {dim_title}'] = pd.cut(adata_subset.obs[f'Discretized {dim_title}'], bins=bins, right=False, precision=0)
+            adata_subset.obs[f'Discretized {dim_title}'] = adata_subset.obs[f'Discretized {dim_title}'].astype('category')
+            n_colors = len(adata_subset.obs[f'Discretized {dim_title}'].unique())
+            palette = sns.color_palette("light:#00c8ff", n_colors=n_colors, as_cmap=False)
+            if direction == '-':
+                palette = palette[::-1]
+            sc.pl.violin(
+                adata_subset, keys=gene_name, groupby=f'Discretized {dim_title}', palette=palette, stripplot=False, jitter=False, rotation=90, show=False, 
+                xlabel=violin_x_title, ax=ax
+            )
+            ax.grid(False)
+            ax.tick_params(axis='both', which='major', labelsize=14)
+            ax.xaxis.label.set_fontsize(12)
+    
+    plt.subplots_adjust(hspace=0.6 if i==2 else 0.3, wspace=0.01)
+    # plt.tight_layout()
+    fig.savefig(output_dir / f'drvi_fig2__col_{i+1}.pdf', bbox_inches='tight', dpi=200)
+    plt.show()
 # -
+
+
+
+
+# ## Tumor adjacient dimension
+
+# +
+df = pd.DataFrame({
+    'DR 22': embed.X[:, np.argmax(embed.var['title'] == 'DR 22')],
+    'Lung condition': embed.obs['lung_condition'].values
+})
+ax = sns.histplot(data=df, bins=50, hue="Lung condition", x="DR 22", stat="probability", log_scale=False, common_norm=False)
+sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
+plt.yscale('log')
+
+plt.savefig(output_dir / f'histplot_dr_22_vs_lung_condition.pdf', bbox_inches='tight', dpi=300)
+plt.show()
+# -
+
+embed.obs['ann_level_2'].unique()
+
+# +
+embed_subset = embed[embed.obs['ann_level_2'] == 'Blood vessels']
+df = pd.DataFrame({
+    'DR 22': embed_subset.X[:, np.argmax(embed_subset.var['title'] == 'DR 22')],
+    'Lung condition': embed_subset.obs['lung_condition'].values
+})
+ax = sns.histplot(data=df, bins=50, hue="Lung condition", x="DR 22", stat="probability", log_scale=False, common_norm=False)
+sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
+plt.yscale('log')
+
+plt.savefig(output_dir / f'histplot_dr_22_vs_lung_condition_limit_blood_vessels.pdf', bbox_inches='tight', dpi=300)
+plt.show()
+# -
+
+fig = sc.pl.embedding(
+    embed, 'X_umap', color=[cell_type_key, condition_key, 'ann_level_2', 'lung_condition'], ncols=1, 
+    show=False, frameon=False, return_fig=True,
+)
+plt.show()
+
+fig = drvi.utils.pl.plot_relevant_genes_on_umap(adata, embed, traverse_adata, "combined_score", score_threshold=0.0, n_top_genes=10,
+                                                dim_subset=['DR 22+'])
+
+
+
+
+
+
+
+# # Clustering level for which rare cell-types emerge
+
+if (RUNS_TO_LOAD['scVI'] / 'embed_with_multiple_res_leidens.h5ad').exists():
+    embed_scvi = sc.read_h5ad(RUNS_TO_LOAD['scVI'] / 'embed_with_multiple_res_leidens.h5ad')
+else:
+    embed_scvi = embeds['scVI'].copy()
+    sc.pp.neighbors(embed_scvi, use_rep="qz_mean", n_neighbors=10, n_pcs=embed_scvi.obsm["qz_mean"].shape[1])                
+    embed_scvi
+
+cluster_resolutions = [0.01, 0.2, 1., 1.5, 2., 2.5, 3., 3.5, 4., 5., 6., 7.0, 7.5, 8., 9., 10., 15., 20., 25.]
+cluster_counts = {}
+for res in cluster_resolutions:
+    key_added = f'leiden_{res}'
+    if key_added not in embed_scvi.obs.columns:
+        sc.tl.leiden(embed_scvi, resolution=res, key_added=key_added)
+    cluster_counts[key_added] = embed_scvi.obs[key_added].nunique()
+    print(key_added, cluster_counts[key_added])
+
+embed_scvi.write(RUNS_TO_LOAD['scVI'] / 'embed_with_multiple_res_leidens.h5ad')
+
+
+
+dim_indicators = pd.DataFrame(
+    np.vstack([
+    (embed_drvi[embed_scvi.obs.index].X[:, np.argmax(embed.var['title'] == 'DR 39')] > 4.7) + 0.,
+    (embed_drvi[embed_scvi.obs.index].X[:, np.argmax(embed.var['title'] == 'DR 32')] > 2) + 0.,
+    (embed_drvi[embed_scvi.obs.index].X[:, np.argmax(embed.var['title'] == 'DR 26')] < -2.3) + 0.,
+    (embed_drvi[embed_scvi.obs.index].X[:, np.argmax(embed.var['title'] == 'DR 34')] > 2.9) + 0.,
+    ]).astype(int).T,
+    columns = ['DR 39+', 'DR 32+', 'DR 26-', 'DR 34+']
+)
+dim_indicators[:3]
+
+# +
+from sklearn.metrics.pairwise import pairwise_distances
+interesting_cts = [
+    "AT0", "pre-TB secretory", "Migratory DCs", "Hillock-like",
+]
+ct_indicators = pd.get_dummies(embed_scvi.obs[cell_type_key])[interesting_cts] + 0.
+
+# For finding thresholds
+# aligned_cells = embed_drvi[embed_scvi.obs.index].X
+# for thr in np.arange(0.5, 8, 0.1):
+#     print(thr)
+#     dim_indicators = pd.DataFrame(
+#         np.vstack([
+#         (aligned_cells[:, np.argmax(embed.var['title'] == 'DR 39')] > thr) + 0.,
+#         (aligned_cells[:, np.argmax(embed.var['title'] == 'DR 32')] > thr) + 0.,
+#         (aligned_cells[:, np.argmax(embed.var['title'] == 'DR 26')] < -thr) + 0.,
+#         (aligned_cells[:, np.argmax(embed.var['title'] == 'DR 34')] > thr) + 0.,
+#         ]).astype(int).T,
+#         columns = ['DR 39+', 'DR 32+', 'DR 26-', 'DR 34+']
+#     )
+    
+#     pairwise_jaccard = 1 - pairwise_distances(ct_indicators.values.T, dim_indicators.values.T, metric="jaccard", n_jobs=-1)
+#     result = pd.DataFrame(pairwise_jaccard, index=interesting_cts, columns=dim_indicators.columns)
+#     drvi_threshold_jaccard = result.max(axis=1)
+#     print(drvi_threshold_jaccard)
+
+pairwise_jaccard = 1 - pairwise_distances(ct_indicators.values.T, dim_indicators.values.T, metric="jaccard", n_jobs=-1)
+result = pd.DataFrame(pairwise_jaccard, index=interesting_cts, columns=dim_indicators.columns)
+drvi_threshold_jaccard = result.max(axis=1)
+print(drvi_threshold_jaccard)
+# -
+
+
+
+jaccard_results = {}
+resolutions_to_plot = [0.01, 0.2, 1., 1.5, 2., 2.5, 3., 4., 5., 6., 7.0, 8., 9., 10.]
+for res in cluster_resolutions:
+    key_added = f'leiden_{res}'
+    print("\n\n\n", key_added, embed_scvi.obs[key_added].nunique())
+    cluster_indicators = pd.get_dummies(embed_scvi.obs[key_added]) + 0.
+    pairwise_jaccard = 1 - pairwise_distances(ct_indicators.values.T, cluster_indicators.values.T, metric="jaccard", n_jobs=-1)
+    result = pd.DataFrame(pairwise_jaccard, index=interesting_cts, columns=cluster_indicators.columns)
+    jaccard_results[key_added] = result.max(axis=1)
+    print(jaccard_results[key_added])
+
+    if res not in resolutions_to_plot:
+        del jaccard_results[key_added]
+
+
+
+# +
+# Create a DataFrame from the dictionary
+df = pd.DataFrame(jaccard_results)
+
+# Reset the index so 'cell_type' becomes a column
+df = df.reset_index().rename(columns={'index': 'cell_type'})
+
+# Melt the DataFrame to long format for plotting
+df_melted = df.melt(id_vars='cell_type', var_name='leiden_resolution', value_name='jaccard_value')
+
+# Map resolutions to cluster counts
+df_melted['cluster_count'] = df_melted['leiden_resolution'].map(cluster_counts)
+
+# Sort by cluster count to keep x-axis in correct order
+df_melted = df_melted.sort_values('cluster_count')
+
+# Set up the seaborn style
+sns.set(style="whitegrid")
+
+# Create the line plot
+plt.figure(figsize=(15, 6))
+sns.lineplot(
+    data=df_melted,
+    x='cluster_count',
+    y='jaccard_value',
+    hue='cell_type',
+    marker='o'
+)
+
+# Customize x-axis to display both resolution and cluster count
+xticks = [cluster_counts[key] for key in cluster_counts if key in df.columns]
+xlabels = []
+for key in cluster_counts:
+    if key in df.columns:
+        res = key.split("_")[1]
+        label = f'resolution = {res}\n({cluster_counts[key]} clusters)' 
+        xlabels.append(label)
+plt.xticks(ticks=xticks, labels=xlabels, rotation=90)
+
+# Set plot titles and labels
+plt.title('Jaccard index values between rare cell-types and clusters')
+plt.xlabel('Leiden resolution (number of clusters)')
+plt.ylabel('Jaccard index')
+
+# Move the legend to the right
+plt.legend(title='Cell Type', bbox_to_anchor=(1.01, 0.2), loc='upper left')
+
+# Add dashed horizontal lines for fixed Jaccard values
+for cell_type, fixed_value in drvi_threshold_jaccard.items():
+    plt.axhline(
+        y=fixed_value,
+        color=sns.color_palette()[df['cell_type'].tolist().index(cell_type)],  # Match the color with the lines
+        linestyle='--',
+        label=f'{cell_type} (fixed)',
+        alpha=0.8
+    )
+    # Add text next to the line
+    plt.text(
+        x=max(df_melted['cluster_count']) + 10.5,  # Position slightly to the right of the last x tick
+        y=fixed_value,
+        s=f'DRVI - {cell_type}',
+        color=sns.color_palette()[df['cell_type'].tolist().index(cell_type)],  # Match the color with the line
+        va='center'
+    )
+
+plt.tight_layout()
+plt.savefig(output_dir / f'drvi_vs_clustering_rare_jaccard.pdf', bbox_inches='tight', dpi=300)
+plt.show()
+# -
+
+
+# # Integration quality assessment
+
+# ## Add scANVI to the scIB metrics
+
+# +
+scib_metrics_save_path = RUNS_TO_LOAD['scVI'] / 'scib_metrics_original_emb.csv'
+bench = Benchmarker(adata, condition_key, cell_type_key, embedding_obsm_keys=['X_scanvi_emb'])
+if scib_metrics_save_path.exists():
+    bench._results = pd.read_csv(scib_metrics_save_path, index_col=0)
+else:
+    bench.benchmark()
+    bench._results.to_csv(scib_metrics_save_path)
+
+scib_results_scanvi = bench._results
+print(scib_results_scanvi)
+bench.plot_results_table(min_max_scale=False, show=True)
+
+# +
+methods_to_plot = [
+    "X_scanvi_emb", "DRVI", "DRVI-IK", "scVI", 
+    "TCVAE-opt", "MICHIGAN-opt", "PCA", "ICA", "MOFA"
+]
+
+results = {}
+for method_name, run_path in RUNS_TO_LOAD.items():
+    if method_name not in methods_to_plot:
+        continue
+    if str(run_path).endswith(".h5ad"):
+        scib_metrics_save_path = str(run_path)[:-len(".h5ad")] + '_scib_metrics.csv'
+    else:
+        scib_metrics_save_path = run_path / 'scib_metrics.csv'
+    print(f"SCIB for {method_name} already calculated.")
+    results[method_name] = pd.read_csv(scib_metrics_save_path, index_col=0)
+    results[method_name].columns = [method_name] + list(results[method_name].columns[1:])
+results['X_scanvi_emb'] = scib_results_scanvi
+
+results_prety = {}
+for method_name, result_df in results.items():
+    if method_name not in methods_to_plot:
+        continue
+    assert result_df.columns[0] == method_name
+    result_df.rename(columns={method_name: pretify_method_name(method_name)}, inplace=True)
+    results_prety[pretify_method_name(method_name)] = result_df
+
+results = results_prety
+bench = Benchmarker(adata, condition_key, cell_type_key, embedding_obsm_keys=results.keys())
+any_result = results[list(results.keys())[0]]
+bench._results = pd.concat([result_df.iloc[:, 0].fillna(0.) for method_name, result_df in results.items()] + [any_result[['Metric Type']]], axis=1, verify_integrity=True)
+bench._results.rename(columns={'X_scanvi_emb': 'scANVI (HLCA original)'}, inplace=True)
+bench.plot_results_table(min_max_scale=False, show=True, 
+                         save_dir=output_dir)
+shutil.move(output_dir / 'scib_results.svg', 
+            output_dir / f'eval_integration_with_scanvi.svg')
+
+# -
+
+
+
+# ## Remove confounding dim
+
+embed = embeds['DRVI']
+model = drvi.model.DRVI.load(RUNS_TO_LOAD['DRVI'] / 'model.pt', adata, prefix='v_0_1_0_')
+drvi.utils.tl.set_latent_dimension_stats(model, embed)
+
+# DR 29 is stress response to dissociation
+
+# +
+embed_save_address = RUNS_TO_LOAD['DRVI'] / 'embed_without_dissociation_resp_dim.h5ad'
+
+if embed_save_address.exists():
+    embed_keep_vars = sc.read_h5ad(embed_save_address)
+else:
+    embed_keep_vars = embed[:, ~(embed.var['title'].isin(['DR 29']))].copy()
+
+    sc.pp.neighbors(embed_keep_vars, n_neighbors=10, use_rep="X", n_pcs=embed_keep_vars.X.shape[1])
+    sc.tl.umap(embed_keep_vars, spread=1.0, min_dist=0.5, random_state=123)
+    sc.pp.pca(embed_keep_vars)
+
+    embed_keep_vars.write(embed_save_address)
+
+embed_keep_vars.shape
+# -
+
+col = cell_type_key
+unique_values = list(sorted(list(embed_keep_vars.obs[col].astype(str).unique())))
+palette = dict(zip(unique_values, cat_100_pallete))
+fig = sc.pl.umap(embed_keep_vars, color=col, 
+                 palette = palette, 
+                 show=False, frameon=False, title='', 
+                 legend_loc='right margin',
+                 colorbar_loc=None,
+                 return_fig=True)
+fig.savefig(output_dir / f'drvi_without_dissociation_resp_dim_umap_{col}.pdf', bbox_inches='tight', dpi=300)
+plt.show()
+
+col = condition_key
+fig = sc.pl.umap(embed_keep_vars, color=col, 
+                 show=False, frameon=False, title='', 
+                 legend_loc='right margin',
+                 colorbar_loc=None,
+                 return_fig=True)
+fig.savefig(output_dir / f'drvi_without_dissociation_resp_dim_umap_{col}.pdf', bbox_inches='tight', dpi=300)
+plt.show()
+
+
+
+adata.obsm['DRVI-pruned'] = embed_keep_vars[adata.obs.index].X
+
+# +
+scib_metrics_save_path = RUNS_TO_LOAD['DRVI'] / 'scib_metrics_without_dissociation_resp_dim.csv'
+bench = Benchmarker(adata, condition_key, cell_type_key, embedding_obsm_keys=['DRVI-pruned'])
+if scib_metrics_save_path.exists():
+    bench._results = pd.read_csv(scib_metrics_save_path, index_col=0)
+else:
+    bench.benchmark()
+    bench._results.to_csv(scib_metrics_save_path)
+
+scib_results_drvi_pruned = bench._results
+print(scib_results_drvi_pruned)
+bench.plot_results_table(min_max_scale=False, show=True)
+
+# +
+methods_to_plot = [
+    "X_scanvi_emb", "DRVI-pruned", "DRVI", "DRVI-IK", "scVI", 
+]
+
+results = {}
+for method_name, run_path in RUNS_TO_LOAD.items():
+    if method_name not in methods_to_plot:
+        continue
+    if str(run_path).endswith(".h5ad"):
+        scib_metrics_save_path = str(run_path)[:-len(".h5ad")] + '_scib_metrics.csv'
+    else:
+        scib_metrics_save_path = run_path / 'scib_metrics.csv'
+    print(f"SCIB for {method_name} already calculated.")
+    results[method_name] = pd.read_csv(scib_metrics_save_path, index_col=0)
+    results[method_name].columns = [method_name] + list(results[method_name].columns[1:])
+results['DRVI-pruned'] = scib_results_drvi_pruned
+results['X_scanvi_emb'] = scib_results_scanvi
+
+results_prety = {}
+for method_name, result_df in results.items():
+    if method_name not in methods_to_plot:
+        continue
+    assert result_df.columns[0] == method_name
+    result_df.rename(columns={method_name: pretify_method_name(method_name)}, inplace=True)
+    results_prety[pretify_method_name(method_name)] = result_df
+
+results = results_prety
+bench = Benchmarker(adata, condition_key, cell_type_key, embedding_obsm_keys=results.keys())
+any_result = results[list(results.keys())[0]]
+bench._results = pd.concat([result_df.iloc[:, 0].fillna(0.) for method_name, result_df in results.items()] + [any_result[['Metric Type']]], axis=1, verify_integrity=True)
+bench._results.rename(columns={'X_scanvi_emb': 'scANVI (HLCA original)',
+                               'DRVI-pruned': 'DRVI without DR 29'}, inplace=True)
+bench.plot_results_table(min_max_scale=False, show=True, 
+                         save_dir=output_dir)
+shutil.move(output_dir / 'scib_results.svg', 
+            output_dir / f'eval_integration_after_pruning_scib.svg')
+
+# -
+
+
 
 
 

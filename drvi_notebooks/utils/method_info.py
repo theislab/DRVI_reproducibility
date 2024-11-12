@@ -3,7 +3,7 @@ def pretify_method_name(method_name):
     if method_name == 'DRVI-IK':
         return 'DRVI-AP'
     if method_name == 'DRVI-CVAE':
-        return 'CVAE'
+        return 'DRVI-CVAE'
     if method_name == 'TCVAE-opt':
         return 'B-TCVAE'
     if method_name == 'TCVAE':

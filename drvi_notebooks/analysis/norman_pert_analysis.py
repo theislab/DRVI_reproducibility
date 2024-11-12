@@ -8,9 +8,9 @@
 #       format_version: '1.5'
 #       jupytext_version: 1.15.2
 #   kernelspec:
-#     display_name: drvi
+#     display_name: drvi-repr
 #     language: python
-#     name: drvi
+#     name: drvi-repr
 # ---
 
 # # Imports
@@ -27,7 +27,6 @@ from collections import defaultdict
 import matplotlib
 from matplotlib.pyplot import rcParams
 import matplotlib.pyplot as plt
-import seaborn as sns
 # -
 
 import warnings
@@ -36,39 +35,17 @@ warnings.filterwarnings('ignore')
 
 # +
 import os
-import sys
-import argparse
-import shutil
-import pickle
-import itertools
 
-import anndata as ad
 import scanpy as sc
-import pickle as pkl
-import pandas as pd
-from scipy.sparse import csr_matrix, find
 import numpy as np
-from sklearn.preprocessing import minmax_scale
-from scipy.stats import entropy
-from sklearn.cluster import MiniBatchKMeans
 from pathlib import Path
-import gc
 from sklearn.feature_selection import mutual_info_classif
 from scipy import stats
 
-from matplotlib.pyplot import rcParams
-import matplotlib.pyplot as plt
-import seaborn as sns
-from scib_metrics.benchmark import Benchmarker
-
-from drvi.utils.metrics import (most_similar_averaging_score, latent_matching_score, 
-    nn_alignment_score, local_mutual_info_score, spearman_correlataion_score)
 from drvi_notebooks.utils.data.data_configs import get_data_info
 from drvi_notebooks.utils.run_info import get_run_info_for_dataset
 from drvi_notebooks.utils.method_info import pretify_method_name
 from drvi_notebooks.utils.plotting import plot_per_latent_scatter, scatter_plot_per_latent
-
-from gprofiler import GProfiler
 # -
 sc.set_figure_params(vector_friendly=True, dpi_save=300)
 
@@ -80,13 +57,16 @@ mplscience.set_style()
 # # Config
 
 cwd = os.getcwd()
-cwd
+
+logs_dir = Path(os.path.expanduser('~/workspace/train_logs'))
+logs_dir
 
 proj_dir = Path(cwd).parent.parent
 proj_dir
 
-logs_dir = Path(os.path.expanduser('~/workspace/train_logs'))
-logs_dir
+output_dir = proj_dir / 'plots' / 'crispr_screen_norman'
+output_dir.mkdir(parents=True, exist_ok=True)
+output_dir
 
 # +
 run_name = 'norman_hvg'
@@ -116,24 +96,6 @@ cat_100_pallete = sc.plotting.palettes.godsnot_102
 
 
 # ## Utils
-
-# +
-def _m1(l):
-    if isinstance(l, list):
-        if isinstance(l[0], list):
-            return [[x - 1 for x in y] for y in l]
-        return [x - 1 for x in l]
-    return l - 1
-
-def _p1(l):
-    if isinstance(l, list):
-        if isinstance(l[0], list):
-            return [[x + 1 for x in y] for y in l]
-        return [x + 1 for x in l]
-    return l + 1
-
-
-# -
 
 def set_font_in_rc_params():
     fs = 16
@@ -185,22 +147,6 @@ for method_name, run_path in RUNS_TO_LOAD.items():
 # -
 
 
-
-
-
-MAX_CELLS_TO_PLOT = None
-for method_name, embed in embeds.items():
-    print(method_name)
-    plot_latent_dims_in_umap(embed, max_cells_to_plot=MAX_CELLS_TO_PLOT, optimal_order=True, vcenter=0, cmap='RdBu_r')
-    plt.show()
-
-MAX_CELLS_TO_PLOT = None
-for method_name, embed in embeds.items():
-    print(method_name)
-    plots = scatter_plot_per_latent(embed, 'qz_mean', plot_columns, max_cells_to_plot=MAX_CELLS_TO_PLOT, 
-                                    xy_limit=5 if method_name in ['DRVI', 'DRVI-IK', 'scVI'] else None, s=10)
-    for col, plt in zip(plot_columns, plots):
-        plt.show()
 
 
 
@@ -288,7 +234,7 @@ for (p1, p2) in [
                 dim_pair[1] = int(np.argwhere(next_max == mi_scores[method_name][p2])[0,0])
         
         def save_fn(fig, dim_i, dim_j, original_col):
-            dir_name = proj_dir / 'plots' / 'norman_pert_analysis'
+            dir_name = output_dir
             dir_name.mkdir(parents=True, exist_ok=True)
             fig.savefig(dir_name / f'fig2_joint_plot_{method_name}_dims_maximizing_{p1}_{p2}.pdf', bbox_inches='tight', dpi=300)
     
@@ -327,7 +273,7 @@ for (p1, p2) in [
         plt.rcParams.update(original_params)
 
     def save_fn(fig, dim_i, dim_j, original_col):
-        dir_name = proj_dir / 'plots' / 'norman_pert_analysis'
+        dir_name = output_dir
         fig.savefig(dir_name / f'fig2_joint_plot_legend_for_dims_maximizing_{p1}_{p2}.pdf', bbox_inches='tight', dpi=300)
     
     embed.obs['Perturbation Name'] = np.where(
@@ -342,19 +288,5 @@ for (p1, p2) in [
                             save_fn=save_fn, 
                             zero_lines=True
                            )
-
-
-
-
-
-# ## DRVI
-
-
-
-
-
-
-
-
 
 

@@ -22,10 +22,11 @@ pancreas_scvelo_info = RunInfo(
         'PCA': logs_dir / 'models' / 'neat-blaze-5',
         'ICA': logs_dir / 'models' / 'royal-energy-4',
         'MOFA': logs_dir / 'models' / 'easy-dragon-1',
-        # MICHIGAN baseline
-        'TCVAE': Path("~/io/michigan/michigan_embed_pancreas_scvelo_32_run_default_tcvae_final.h5ad").expanduser(),
+        # Not optimised
+        # 'TCVAE': Path("~/io/michigan/michigan_embed_pancreas_scvelo_32_run_default_tcvae_final.h5ad").expanduser(),
         'TCVAE-opt': Path("~/io/michigan/michigan_embed_pancreas_scvelo_32_run_opt_tcvae_final.h5ad").expanduser(),
-        'MICHIGAN': Path("~/io/michigan/michigan_embed_pancreas_scvelo_32_run_default_michigan_final.h5ad").expanduser(),
+        # Not optimised
+        # 'MICHIGAN': Path("~/io/michigan/michigan_embed_pancreas_scvelo_32_run_default_michigan_final.h5ad").expanduser(),
         'MICHIGAN-opt': Path("~/io/michigan/michigan_embed_pancreas_scvelo_32_run_opt_michigan_final.h5ad").expanduser(),
         'DRVI-CVAE': logs_dir / 'models' / 'drvi_20240410-193229-430441',
     },
@@ -43,10 +44,11 @@ hlca_info = RunInfo(
         'PCA': logs_dir / 'models' / 'dazzling-wind-1',
         'ICA': logs_dir / 'models' / 'kind-fog-2',
         'MOFA': logs_dir / 'models' / 'ruby-snowflake-4',
-        # MICHIGAN baseline
-        'TCVAE': Path("~/io/michigan/michigan_embed_hlca_64_run_default_tcvae_final.h5ad").expanduser(),
+        # Not optimised
+        # 'TCVAE': Path("~/io/michigan/michigan_embed_hlca_64_run_default_tcvae_final.h5ad").expanduser(),
         'TCVAE-opt': Path("~/io/michigan/michigan_embed_hlca_64_run_opt_tcvae_final.h5ad").expanduser(),
-        'MICHIGAN': Path("~/io/michigan/michigan_embed_hlca_64_run_default_michigan_final.h5ad").expanduser(),
+        # Not optimised
+        # 'MICHIGAN': Path("~/io/michigan/michigan_embed_hlca_64_run_default_michigan_final.h5ad").expanduser(),
         'MICHIGAN-opt': Path("~/io/michigan/michigan_embed_hlca_64_run_opt_michigan_final.h5ad").expanduser(),
         'DRVI-CVAE': logs_dir / 'models' / 'drvi_20240307-160722-522787',
     },
@@ -63,10 +65,11 @@ norman_hvg_info = RunInfo(
         'PCA': logs_dir / 'models' / 'sage-haze-1',
         'ICA': logs_dir / 'models' / 'usual-flower-3',
         'MOFA': logs_dir / 'models' / 'dainty-firefly-5',
-        # MICHIGAN baseline
-        'TCVAE': Path("~/io/michigan/michigan_embed_norman_hvg_64_run_default_tcvae_final.h5ad").expanduser(),
+        # Not optimised
+        # 'TCVAE': Path("~/io/michigan/michigan_embed_norman_hvg_64_run_default_tcvae_final.h5ad").expanduser(),
         'TCVAE-opt': Path("~/io/michigan/michigan_embed_norman_hvg_64_run_opt_tcvae_final.h5ad").expanduser(),
-        'MICHIGAN': Path("~/io/michigan/michigan_embed_norman_hvg_64_run_default_michigan_final.h5ad").expanduser(),
+        # Not optimised
+        # 'MICHIGAN': Path("~/io/michigan/michigan_embed_norman_hvg_64_run_default_michigan_final.h5ad").expanduser(),
         'MICHIGAN-opt': Path("~/io/michigan/michigan_embed_norman_hvg_64_run_opt_michigan_final.h5ad").expanduser(),
         'DRVI-CVAE': logs_dir / 'models' / 'drvi_20241018-134008-415049',
     }
@@ -82,10 +85,11 @@ retina_organoid_hvg_info = RunInfo(
         'PCA': logs_dir / 'models' / 'usual-eon-2',
         'ICA': logs_dir / 'models' / 'grateful-star-5',
         'MOFA': logs_dir / 'models' / 'feasible-universe-3',
-        # MICHIGAN baseline
-        'TCVAE': Path("~/io/michigan/michigan_embed_retina_organoid_hvg_32_run_default_tcvae_final.h5ad").expanduser(),
+        # Not optimised
+        # 'TCVAE': Path("~/io/michigan/michigan_embed_retina_organoid_hvg_32_run_default_tcvae_final.h5ad").expanduser(),
         'TCVAE-opt': Path("~/io/michigan/michigan_embed_retina_organoid_hvg_32_run_opt_tcvae_final.h5ad").expanduser(),
-        'MICHIGAN': Path("~/io/michigan/michigan_embed_retina_organoid_hvg_32_run_default_michigan_final.h5ad").expanduser(),
+        # Not optimised
+        # 'MICHIGAN': Path("~/io/michigan/michigan_embed_retina_organoid_hvg_32_run_default_michigan_final.h5ad").expanduser(),
         'MICHIGAN-opt': Path("~/io/michigan/michigan_embed_retina_organoid_hvg_32_run_opt_michigan_final.h5ad").expanduser(),
         'DRVI-CVAE': logs_dir / 'models' / 'drvi_20240305-123818-871021',
     }
@@ -101,9 +105,11 @@ immune_hvg_info = RunInfo(
         'PCA': logs_dir / 'models' / 'clear-meadow-12',
         'ICA': logs_dir / 'models' / 'apricot-feather-12',
         'MOFA': logs_dir / 'models' / 'robust-universe-14',
-        'TCVAE': Path("~/io/michigan/michigan_embed_immune_hvg_32_run_default_tcvae_final.h5ad").expanduser(),
+        # Not optimised
+        # 'TCVAE': Path("~/io/michigan/michigan_embed_immune_hvg_32_run_default_tcvae_final.h5ad").expanduser(),
         'TCVAE-opt': Path("~/io/michigan/michigan_embed_immune_hvg_32_run_opt_tcvae_final.h5ad").expanduser(),
-        'MICHIGAN': Path("~/io/michigan/michigan_embed_immune_hvg_32_run_default_michigan_final.h5ad").expanduser(),
+        # Not optimised
+        # 'MICHIGAN': Path("~/io/michigan/michigan_embed_immune_hvg_32_run_default_michigan_final.h5ad").expanduser(),
         'MICHIGAN-opt': Path("~/io/michigan/michigan_embed_immune_hvg_32_run_opt_michigan_final.h5ad").expanduser(),
         'DRVI-CVAE': logs_dir / 'models' / 'drvi_20240430-120143-193655',
     }
@@ -120,10 +126,11 @@ pbmc_covid_hvg_info = RunInfo(
         'PCA': logs_dir / 'models' / 'silver-oath-1',
         'ICA': logs_dir / 'models' / 'curious-energy-2',
         'MOFA': logs_dir / 'models' / 'eternal-brook-3',
-        # MICHIGAN baseline
-        'TCVAE': Path("~/io/michigan/michigan_embed_pbmc_covid_hvg_64_run_default_tcvae_final.h5ad").expanduser(),
+        # Not optimised
+        # 'TCVAE': Path("~/io/michigan/michigan_embed_pbmc_covid_hvg_64_run_default_tcvae_final.h5ad").expanduser(),
         'TCVAE-opt': Path("~/io/michigan/michigan_embed_pbmc_covid_hvg_64_run_opt_tcvae_final.h5ad").expanduser(),
-        'MICHIGAN': Path("~/io/michigan/michigan_embed_pbmc_covid_hvg_64_run_default_michigan_final.h5ad").expanduser(),
+        # Not optimised
+        # 'MICHIGAN': Path("~/io/michigan/michigan_embed_pbmc_covid_hvg_64_run_default_michigan_final.h5ad").expanduser(),
         'MICHIGAN-opt': Path("~/io/michigan/michigan_embed_pbmc_covid_hvg_64_run_opt_michigan_final.h5ad").expanduser(),
         'DRVI-CVAE': logs_dir / 'models' / 'drvi_20240430-123206-845034',
     }
@@ -139,10 +146,11 @@ zebrafish_hvg_info = RunInfo(
         'PCA': logs_dir / 'models' / 'deft-darkness-2',
         'ICA': logs_dir / 'models' / 'glad-deluge-3',
         'MOFA': logs_dir / 'models' / 'generous-frost-5',
-        # MICHIGAN baseline
-        'TCVAE': Path("~/io/michigan/michigan_embed_zebrafish_hvg_64_run_default_tcvae_final.h5ad").expanduser(),
+        # Not optimised
+        # 'TCVAE': Path("~/io/michigan/michigan_embed_zebrafish_hvg_64_run_default_tcvae_final.h5ad").expanduser(),
         'TCVAE-opt': Path("~/io/michigan/michigan_embed_zebrafish_hvg_64_run_opt_tcvae_final.h5ad").expanduser(),
-        'MICHIGAN': Path("~/io/michigan/michigan_embed_zebrafish_hvg_64_run_default_michigan_final.h5ad").expanduser(),
+        # Not optimised
+        # 'MICHIGAN': Path("~/io/michigan/michigan_embed_zebrafish_hvg_64_run_default_michigan_final.h5ad").expanduser(),
         'MICHIGAN-opt': Path("~/io/michigan/michigan_embed_zebrafish_hvg_64_run_opt_michigan_final.h5ad").expanduser(),
         'DRVI-CVAE': logs_dir / 'models' / 'drvi_20241018-172843-944942',
     }

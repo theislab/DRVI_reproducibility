@@ -8,9 +8,9 @@
 #       format_version: '1.5'
 #       jupytext_version: 1.15.2
 #   kernelspec:
-#     display_name: drvi
+#     display_name: drvi-repr
 #     language: python
-#     name: drvi
+#     name: drvi-repr
 # ---
 
 # # Imports
@@ -18,54 +18,25 @@
 # %load_ext autoreload
 # %autoreload 2
 
-# +
 import os
-
-import scanpy as sc
-
-from matplotlib.pyplot import rcParams
 import matplotlib.pyplot as plt
-import seaborn as sns
-# -
 
 import warnings
 # warnings.filterwarnings(action='once')
 warnings.filterwarnings('ignore')
 
 # +
-import os
-import sys
-import argparse
-import shutil
-import pickle
-import itertools
-
-import anndata as ad
 import scanpy as sc
-import pickle as pkl
 import pandas as pd
-from scipy.sparse import csr_matrix, find
 import numpy as np
-from sklearn.preprocessing import minmax_scale
-from scipy.stats import entropy
-from sklearn.cluster import MiniBatchKMeans
 from pathlib import Path
-import gc
 
-from matplotlib.pyplot import rcParams
-import matplotlib.pyplot as plt
-import seaborn as sns
-from scib_metrics.benchmark import Benchmarker
-
-from drvi.utils.metrics import (most_similar_averaging_score, latent_matching_score, 
-    nn_alignment_score, local_mutual_info_score, spearman_correlataion_score)
 from drvi_notebooks.utils.data.adata_plot_pp import make_balanced_subsample
 from drvi_notebooks.utils.data.data_configs import get_data_info
 from drvi_notebooks.utils.run_info import get_run_info_for_dataset
+from drvi_notebooks.utils.method_info import pretify_method_name
 from drvi_notebooks.utils.latent import set_optimal_ordering
-from drvi_notebooks.utils.plotting import plot_per_latent_scatter, scatter_plot_per_latent
-
-from gprofiler import GProfiler
+from drvi_notebooks.utils.plotting import scatter_plot_per_latent
 # -
 sc.set_figure_params(vector_friendly=True, dpi_save=300)
 
@@ -82,13 +53,13 @@ cwd
 proj_dir = Path(cwd).parent.parent
 proj_dir
 
-(proj_dir / 'plots' / 'immune_ablation_all_genes').mkdir(parents=True, exist_ok=True)
+(proj_dir / 'plots' / 'immune_ablation').mkdir(parents=True, exist_ok=True)
 
 logs_dir = Path(os.path.expanduser('~/workspace/train_logs'))
 logs_dir
 
 # +
-run_name = 'immune_all'
+run_name = 'immune_hvg'
 run_version = '4.3'
 run_path = os.path.expanduser('~/workspace/train_logs/models')
 
@@ -113,25 +84,6 @@ wong_pallete = [
 ]
 cat_100_pallete = sc.plotting.palettes.godsnot_102
 
-
-# ## Utils
-
-# +
-def _m1(l):
-    if isinstance(l, list):
-        if isinstance(l[0], list):
-            return [[x - 1 for x in y] for y in l]
-        return [x - 1 for x in l]
-    return l - 1
-
-def _p1(l):
-    if isinstance(l, list):
-        if isinstance(l[0], list):
-            return [[x + 1 for x in y] for y in l]
-        return [x + 1 for x in l]
-    return l + 1
-# -
-
 # ## Data
 
 
@@ -141,7 +93,7 @@ adata
 # ## Runs to load
 
 # +
-run_info = get_run_info_for_dataset('immune_all_hbw_ablation')
+run_info = get_run_info_for_dataset('immune_hvg_ablation')
 RUNS_TO_LOAD = run_info.run_dirs
 scatter_point_size = run_info.scatter_point_size
 adata_to_transfer_obs = run_info.adata_to_transfer_obs
@@ -162,6 +114,8 @@ for method_name, run_path in RUNS_TO_LOAD.items():
         random_order = embed.obs.sample(frac=1.).index
     embed = embed[random_order].copy()
     embeds[method_name] = embed
+
+
 
 
 
@@ -211,38 +165,8 @@ for _, col in enumerate(plot_columns):
                         top=0.95,
                         wspace=0.1,
                         hspace=0.1)   
-    plt.savefig(proj_dir / 'plots' / 'immune_ablation_all_genes' / f'plot_{run_name}_umaps_{col}.pdf', bbox_inches='tight')
+    plt.savefig(proj_dir / 'plots' / 'immune_ablation' / f'plot_{run_name}_umaps_{col}.pdf', bbox_inches='tight')
 # -
-
-MAX_CELLS_TO_PLOT = None
-for method_name, embed in embeds.items():
-    print(method_name)
-    mask = np.abs(embed.X).max(axis=0) > 0.1
-    if mask.sum() % 2 == 1:
-        for i in range(len(mask)):
-            if not mask[i]:
-                mask[i] = True
-                break
-    embed = embed[:, mask].copy()
-    set_optimal_ordering(embed, key_added='optimal_var_order', metric='euclidean+')
-    plot_latent_dims_in_umap(embed, max_cells_to_plot=MAX_CELLS_TO_PLOT, optimal_order=True, vcenter=0, cmap='RdBu_r')
-    plt.show()
-
-MAX_CELLS_TO_PLOT = None
-for method_name, embed in embeds.items():
-    print(method_name)
-    mask = np.abs(embed.X).max(axis=0) > 0.1
-    if mask.sum() % 2 == 1:
-        for i in range(len(mask)):
-            if not mask[i]:
-                mask[i] = True
-                break
-    embed = embed[:, mask].copy()
-    set_optimal_ordering(embed, key_added='optimal_var_order', metric='euclidean+')
-    plots = scatter_plot_per_latent(embed, 'qz_mean', plot_columns, max_cells_to_plot=MAX_CELLS_TO_PLOT, 
-                                    xy_limit=5 if method_name in ['DRVI', 'DRVI-IK', 'scVI'] else None, s=10)
-    for col, plt in zip(plot_columns, plots):
-        plt.show()
 
 for method_name, embed in embeds.items():
     print(method_name)
@@ -264,7 +188,7 @@ for method_name, embed in embeds.items():
         show=False,
     )
     
-    plt.savefig(proj_dir / 'plots' / 'immune_ablation_all_genes' / f'heatmap_of_non_vanished_dims_{k}_{method_name}.pdf', bbox_inches='tight')
+    plt.savefig(proj_dir / 'plots' / 'immune_ablation' / f'heatmap_of_non_vanished_dims_{k}_{method_name}.pdf', bbox_inches='tight')
     plt.show()
 
 
@@ -279,10 +203,10 @@ for method_name, embed in embeds.items():
     std_array = embed.X.std(axis=0)[order]
     ranks = np.arange(1, embed.n_vars + 1)
     
-    for y_axis_title, x in [
-        ("Max absolute value", max_value_array),
-        ("Mean", mean_array),
-        ("Std", std_array),
+    for y_axis_title, x, limits in [
+        ("Max absolute value", max_value_array, (0, 10)),
+        ("Mean", mean_array, (-1, 1)),
+        ("Std", std_array, (0.0001, 1.2)),
     ]:
         for is_log in [True, False]:
             # Plotting the data
@@ -295,13 +219,14 @@ for method_name, embed in embeds.items():
             if is_log:
                 plt.yscale('log')
             plt.ylabel(y_axis_title)
+            plt.ylim(limits)
             
             # Adding a legend
             plt.legend().remove()
             
             # Displaying the plot
             plt.grid(axis='x')
-            plt.savefig(proj_dir / 'plots' / 'immune_ablation_all_genes' / f'variable_vs_rank_based_on_max_{y_axis_title}{"_log" if is_log else ""}_{method_name}.pdf', bbox_inches='tight')
+            plt.savefig(proj_dir / 'plots' / 'immune_ablation' / f'variable_vs_rank_based_on_max_{y_axis_title}{"_log" if is_log else ""}_{method_name}.pdf', bbox_inches='tight')
             plt.show()
 
 
@@ -360,7 +285,7 @@ plot_df.T
 
 metric = 'n_non_vanished'
 plt = plot_based_on_n_latent(plot_df.copy(), metric, 'Number of \nnon-valished factors')
-plt.savefig(proj_dir / 'plots' / 'immune_ablation_all_genes' / f'{metric}_vs_n_latent.pdf', bbox_inches='tight')
+plt.savefig(proj_dir / 'plots' / 'immune_ablation' / f'{metric}_vs_n_latent.pdf', bbox_inches='tight')
 plt.show()
 
 
@@ -380,7 +305,7 @@ metric_abbr = {
 }
 disentanglement_results = []
 for metric_aggregation_type in ['LMS', 'MSAS', 'MSGS']:
-    results_df = pd.read_csv(proj_dir / 'results' / f'eval_disentanglement_immune_all_hbw_ablation_{metric_aggregation_type}.csv')
+    results_df = pd.read_csv(proj_dir / 'results' / f'eval_disentanglement_immune_hvg_ablation_{metric_aggregation_type}.csv')
     results_df['aggregation_type'] = metric_aggregation_type
     results_df['metric_short_name'] = metric_aggregation_type + "-" + results_df['metric'].map(metric_abbr).astype(str)
     disentanglement_results.append(results_df)
@@ -398,23 +323,29 @@ df
 for metric in df.columns:
     if "-" not in metric:
         continue
-    df_ = df.copy()
-    df_[metric] = df_[metric].astype(float)
-    plt = plot_based_on_n_latent(df_, metric, metric)
-    plt.savefig(proj_dir / 'plots' / 'immune_ablation_all_genes' / f'{metric}_vs_n_latent.pdf', bbox_inches='tight')
+
+    plt = plot_based_on_n_latent(df.copy(), metric, metric)
+    plt.savefig(proj_dir / 'plots' / 'immune_ablation' / f'{metric}_vs_n_latent.pdf', bbox_inches='tight')
     plt.show()
 
-df_
+
+
+
 
 # # Integrattion quality comparison
 
+methods_to_consider = ["DRVI", "DRVI-AP", "scVI", "PCA", "ICA", "MICHIGAN", "B-TCVAE", "MOFA"]
 
-
-scib_results_address = proj_dir / 'results' / f'scib_results_immune_all_hbw_ablation.csv'
+scib_results_address = proj_dir / 'results' / f'scib_results_immune_hvg_ablation.csv'
 scib_df = pd.read_csv(scib_results_address, index_col=0).reset_index(names='method')
 scib_df = scib_df[['method', 'Bio conservation', 'Batch correction', 'Total']]
 scib_df['n_latent'] = scib_df['method'].str.split(" ").str[0].astype(int)
 scib_df
+
+scib_methods = pd.read_csv(proj_dir / 'results' / f'scib_results_immune_hvg.csv', index_col=0).reset_index(names='method')
+scib_methods = scib_methods[['method', 'Bio conservation', 'Batch correction', 'Total']]
+scib_methods = scib_methods[(scib_methods['method'].isin(methods_to_consider))]
+scib_methods
 
 for metric in scib_df.columns:
     if metric in ['n_latent', 'method']:
@@ -422,24 +353,19 @@ for metric in scib_df.columns:
 
     plt = plot_based_on_n_latent(scib_df.copy(), metric, metric, zero_center=False)
     prev_y = 0
+    y_min = min(scib_methods[metric].min(), scib_df[metric].min())
+    y_length = max(scib_methods[metric].max(), scib_df[metric].max()) - y_min
+    for row in scib_methods.sort_values(metric).iterrows():
+        bias = 0
+        if row[1][metric] - prev_y < 0.06 * y_length:
+            bias = 0.06 * y_length - row[1][metric] + prev_y
+        plt.axhline(y=row[1][metric], linestyle='--', color='red', zorder=-10)
+        plt.text(1.01, 0.05 + 0.9 * (row[1][metric] + bias - scib_methods[metric].min()) / y_length,
+                 row[1]['method'], color='red', horizontalalignment='left', verticalalignment='center', transform=plt.gca().transAxes)
+        prev_y = row[1][metric] + bias
     if metric == 'Total':
         plt.ylabel('Total SCIB score')
-    plt.savefig(proj_dir / 'plots' / 'immune_ablation_all_genes' / f'scib_{metric}_vs_n_latent.pdf', bbox_inches='tight')
+    plt.savefig(proj_dir / 'plots' / 'immune_ablation' / f'scib_{metric}_vs_n_latent.pdf', bbox_inches='tight')
     plt.show()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 

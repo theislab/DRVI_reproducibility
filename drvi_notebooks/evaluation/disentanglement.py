@@ -8,9 +8,9 @@
 #       format_version: '1.5'
 #       jupytext_version: 1.15.2
 #   kernelspec:
-#     display_name: drvi
+#     display_name: drvi-repr
 #     language: python
-#     name: drvi
+#     name: drvi-repr
 # ---
 
 # # Imports
@@ -23,7 +23,6 @@ import os
 
 import scanpy as sc
 
-from matplotlib.pyplot import rcParams
 import matplotlib.pyplot as plt
 import seaborn as sns
 # -
@@ -36,25 +35,12 @@ warnings.filterwarnings('ignore')
 import os
 import sys
 import argparse
-import shutil
 import pickle
 
-import anndata as ad
 import scanpy as sc
-import pickle as pkl
 import pandas as pd
-from scipy.sparse import csr_matrix, find
 import numpy as np
-from sklearn.preprocessing import minmax_scale
-from scipy.stats import entropy
-from sklearn.cluster import MiniBatchKMeans
 from pathlib import Path
-import gc
-
-from matplotlib.pyplot import rcParams
-import matplotlib.pyplot as plt
-import seaborn as sns
-from scib_metrics.benchmark import Benchmarker
 
 import drvi
 from drvi.utils.metrics import (most_similar_averaging_score, latent_matching_score, most_similar_gap_score,
@@ -64,7 +50,6 @@ from drvi_notebooks.utils.data.data_configs import get_data_info
 from drvi_notebooks.utils.run_info import get_run_info_for_dataset
 from drvi_notebooks.utils.method_info import pretify_method_name
 from drvi_notebooks.utils.latent import set_optimal_ordering
-from drvi_notebooks.utils.plotting import plot_per_latent_scatter, scatter_plot_per_latent
 # -
 sc.set_figure_params(vector_friendly=True, dpi_save=300)
 
@@ -80,7 +65,7 @@ parser.add_argument('--run-name', type=str)
 
 interactive = False
 if hasattr(sys, 'ps1'):
-    args = parser.parse_args("--run-name zebrafish_hvg".split(" "))
+    args = parser.parse_args("--run-name immune_hvg".split(" "))
     interactive = True
 else:
     args = parser.parse_args()
@@ -107,8 +92,6 @@ if run_name.endswith("_ablation"):
     real_run_name = run_name[:-len("_ablation")]
 if run_name in ['immune_all_hbw_ablation']:
     real_run_name = 'immune_all'
-if run_name in ['immune_hvg_scvi_ablation']:
-    real_run_name = 'immune_hvg'
 run_version = '4.3'
 run_path = os.path.expanduser('~/workspace/train_logs/models')
 
@@ -443,44 +426,6 @@ print('MSGS')
 final_df.T
 
 final_df.plot.bar(figsize=(15, 6))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# +
-# MAX_CELLS_TO_PLOT = None
-# for method_name, embed in embeds.items():
-#     print(method_name)
-#     plots = scatter_plot_per_latent(embed, 'qz_mean', plot_columns, max_cells_to_plot=MAX_CELLS_TO_PLOT, 
-#                                     xy_limit=5 if method_name in ['DRVI', 'DRVI-IK', 'scVI'] else None, s=scatter_point_size)
-#     for col, plt in zip(plot_columns, plots):
-#         save_path = proj_dir / 'plots' / 'emb_plots' / f'embedding_plots_{run_name}_{method_name}_{col}.pdf'
-#         save_path.parent.mkdir(parents=True, exist_ok=True)
-#         plt.savefig(save_path, bbox_inches='tight')
-#         plt.show()
-# -
-
-
-
-
-
-
-
-
-
-
-
 
 
 

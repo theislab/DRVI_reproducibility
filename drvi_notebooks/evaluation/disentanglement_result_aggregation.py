@@ -8,9 +8,9 @@
 #       format_version: '1.5'
 #       jupytext_version: 1.15.2
 #   kernelspec:
-#     display_name: drvi
+#     display_name: drvi-repr
 #     language: python
-#     name: drvi
+#     name: drvi-repr
 # ---
 
 # # Imports
@@ -389,19 +389,5 @@ for normalize_each_metric in [True, False]:
         )
         fig.savefig(proj_dir / 'plots' / f'eval_disentanglement_{metric_type}{"" if normalize_each_metric else "_raw"}_table_summary.pdf', facecolor=ax.get_facecolor(), dpi=300)
         plt.show()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 

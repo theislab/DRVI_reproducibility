@@ -8,9 +8,9 @@
 #       format_version: '1.5'
 #       jupytext_version: 1.15.2
 #   kernelspec:
-#     display_name: drvi
+#     display_name: drvi-repr
 #     language: python
-#     name: drvi
+#     name: drvi-repr
 # ---
 
 # # Imports
@@ -18,15 +18,8 @@
 # %load_ext autoreload
 # %autoreload 2
 
-# +
 import os
-
-import scanpy as sc
-
-from matplotlib.pyplot import rcParams
 import matplotlib.pyplot as plt
-import seaborn as sns
-# -
 
 import warnings
 # warnings.filterwarnings(action='once')
@@ -34,39 +27,19 @@ warnings.filterwarnings('ignore')
 
 # +
 import os
-import sys
-import argparse
-import shutil
-import pickle
-import itertools
 from collections import OrderedDict
 
-import anndata as ad
 import scanpy as sc
-import pickle as pkl
 import pandas as pd
-from scipy.sparse import csr_matrix, find
 import numpy as np
-from sklearn.preprocessing import minmax_scale
-from scipy.stats import entropy
-from sklearn.cluster import MiniBatchKMeans
 from pathlib import Path
-import gc
 
-from matplotlib.pyplot import rcParams
 import matplotlib.pyplot as plt
-import seaborn as sns
-from scib_metrics.benchmark import Benchmarker
 
-from drvi.utils.metrics import (most_similar_averaging_score, latent_matching_score, 
-    nn_alignment_score, local_mutual_info_score, spearman_correlataion_score)
 from drvi_notebooks.utils.data.adata_plot_pp import make_balanced_subsample
 from drvi_notebooks.utils.data.data_configs import get_data_info
 from drvi_notebooks.utils.run_info import get_run_info_for_dataset
 from drvi_notebooks.utils.latent import set_optimal_ordering
-from drvi_notebooks.utils.plotting import plot_per_latent_scatter, scatter_plot_per_latent
-
-from gprofiler import GProfiler
 # -
 sc.set_figure_params(vector_friendly=True, dpi_save=300)
 
@@ -96,24 +69,6 @@ wong_pallete = [
 ]
 cat_100_pallete = sc.plotting.palettes.godsnot_102
 
-
-# ## Utils
-
-# +
-def _m1(l):
-    if isinstance(l, list):
-        if isinstance(l[0], list):
-            return [[x - 1 for x in y] for y in l]
-        return [x - 1 for x in l]
-    return l - 1
-
-def _p1(l):
-    if isinstance(l, list):
-        if isinstance(l[0], list):
-            return [[x + 1 for x in y] for y in l]
-        return [x + 1 for x in l]
-    return l + 1
-# -
 
 # ## Data
 
@@ -450,14 +405,5 @@ for metric in integration_results.keys():
     plt = plot_the_metric(plot_df.reset_index(), title, palette=palette)
     plt.savefig(proj_dir / 'plots' / 'dim_effect' / f'integration_{metric}_combined_plot.pdf', bbox_inches='tight')
     plt.show()
-
-
-
-
-
-
-
-
-
 
 
