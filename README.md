@@ -7,9 +7,9 @@ This repository contains the codes required to reproduce the results in DRVI pap
 
 # Repository structure
 All relevant files are available in `drvi_notebooks` directory.
-- `data` contains code for pre-processing of the analysed datasets.
-- `general` contains the code to run DRVI, DRVI-AP, scVI, and CVAE on different datasets. `drvi_runvis.py` is a general python script for running the models and all the running configs are available at `runs.sh`.
-- `baseline` contains te code to run PCA, ICA, and MOFA on different datasets. `linear_baselines_runvis.py` is a general python script for running the models and all the running configs are available at `baseline_runs.sh`.
+- `data` contains code for pre-processing of the analyzed datasets.
+- `general` contains the code to run DRVI, DRVI-AP, scVI, and CVAE on different datasets. `drvi_runvis.py` is a general Python script for running the models, and all the running configs are available at `runs.sh`.
+- `baseline` contains the code to run PCA, ICA, and MOFA on different datasets. `linear_baselines_runvis.py` is a general Python script for running the models, and all the running configs are available at `baseline_runs.sh`.
 - `evaluation` contains the code for disentanglement and integration benchmarking (Fig. 2 and supplemental figures related to benchmarking).
 - `analysis` contains the code for analysis of immune, HLCA, and developmental pancreas datasets, as well as the code required to produce the rest of the figures.
 - `utils` contains utils functions used all around the project. That is why one should install this repository before using notebooks.
@@ -19,7 +19,7 @@ All relevant files are available in `drvi_notebooks` directory.
 # Requirements
 Install dependencies in requirements.txt and follow the next steps.
 
-Then run the following commands to be able to run py files as notebooks:
+Then run the following commands to be able to run `.py` files as notebooks:
 ```commandline
 jupyter nbextension install jupytext --user --py
 jupyter nbextension enable jupytext --user --py
@@ -80,5 +80,5 @@ Download from cellxgene: https://cellxgene.cziscience.com/collections/2f4c738f-e
 
 ### Daniocell dataset
 Download the dataset from: https://zenodo.org/records/8133569
-Cluster annotations (Table S2 of the main paper) is downloaded from: https://ars.els-cdn.com/content/image/1-s2.0-S1534580723005774-mmc3.xlsx
+Cluster annotations (Table S2 of the main paper) are downloaded from https://ars.els-cdn.com/content/image/1-s2.0-S1534580723005774-mmc3.xlsx
 
