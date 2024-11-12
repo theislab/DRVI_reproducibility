@@ -17,5 +17,4 @@ dist/
 train_logs/
 **/train_logs
 lightning_logs/
-*.ipynb
 /drvi_notebooks/misc/
