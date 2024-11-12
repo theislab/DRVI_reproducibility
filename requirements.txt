@@ -1,9 +1,0 @@
-#jupyterlab==3.6.3
-#jupytext==1.14.5
-# also install DRVI from source e.g.: `pip install -e path_to_scfemb_repo`
-pyarrow==13.0.0
-wandb==0.15.12
-tensorboard==2.15.0
-leidenalg
-#rapids_singlecell==0.9.3
-gprofiler-official==1.0.0
