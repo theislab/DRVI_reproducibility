@@ -35,3 +35,10 @@ python integration.py --run-name hlca_ablation
 python integration.py --run-name pbmc_covid_hvg_ablation
 python integration.py --run-name retina_organoid_hvg_ablation
 
+
+
+
+# For scATAC-seq dataset (NeuroIPS 21 challenge)
+python disentanglement.py --run-name atac_nips21
+python integration.py --run-name atac_nips21
+
