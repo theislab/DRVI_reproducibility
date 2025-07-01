@@ -8,9 +8,9 @@
 #       format_version: '1.5'
 #       jupytext_version: 1.15.2
 #   kernelspec:
-#     display_name: drvi-repr
+#     display_name: drvi
 #     language: python
-#     name: drvi-repr
+#     name: drvi
 # ---
 
 # # Imports
@@ -45,6 +45,7 @@ from pathlib import Path
 from scib_metrics.benchmark import Benchmarker
 
 import drvi
+from drvi.utils.metrics import DiscreteDisentanglementBenchmark
 from drvi_notebooks.utils.data.data_configs import get_data_info
 from drvi_notebooks.utils.run_info import get_run_info_for_dataset
 from drvi_notebooks.utils.method_info import pretify_method_name
@@ -117,6 +118,9 @@ def set_font_in_rc_params():
 adata = sc.read(data_path)
 adata
 
+adata_full = sc.read(Path('~/data/misc/Immune_ALL_human.h5ad').expanduser())
+adata_full
+
 # ## Runs to load
 
 # All these runs are created by the scripts in `general` and `baseline` directories. You need to run them first.
@@ -150,12 +154,20 @@ for method_name, run_path in RUNS_TO_LOAD.items():
 
 
 
-# # Heatmaps for all models
+embed_drvi = embeds['DRVI']
+model_drvi = drvi.model.DRVI.load(RUNS_TO_LOAD['DRVI'] / 'model.pt', adata, prefix='v_0_1_0_')
+adata.obsm['X_umap_drvi'] = embed_drvi[adata.obs.index].obsm['X_umap']
 
-noise_condition = 'no_noise'
-metric_results_pkl_address = proj_dir / 'results' / f'eval_disentanglement_fine_metric_results_{run_name}_{noise_condition}.pkl'
-with open(metric_results_pkl_address, 'rb') as f:
-    metric_results = pickle.load(f)
+drvi.utils.tl.set_latent_dimension_stats(model_drvi, embed_drvi)
+drvi.utils.pl.plot_latent_dimension_stats(embed_drvi, ncols=2)
+
+embed_drvi.write_h5ad(RUNS_TO_LOAD['DRVI'] / 'latent_sorted.h5ad')
+
+
+
+
+
+# # Heatmaps for all models
 
 embed_subset = drvi.utils.pl.make_balanced_subsample(embeds['DRVI'], cell_type_key, min_count=20)
 unique_plot_cts = [
@@ -178,18 +190,26 @@ unique_plot_cts = [
 ]
 
 for method_name, embed in embeds.items():
-    if method_name not in metric_results:
-        continue
     print(method_name)
+
+    # Load mutual info of dims and cell-type from benchmarking for nicer plotting
+    version = DiscreteDisentanglementBenchmark.version
+    if str(RUNS_TO_LOAD[method_name]).endswith('.h5ad'):
+        bench_filename = Path(str(RUNS_TO_LOAD[method_name])[:-len('.h5ad')] + f'_DR_benchmark_on_{cell_type_key}_{version}.pkl')
+    else:
+        bench_filename = RUNS_TO_LOAD[method_name] / f'DR_benchmark_on_{cell_type_key}_{version}.pkl'
+    bench = DiscreteDisentanglementBenchmark.load(bench_filename, embed.X, discrete_target=embed.obs[cell_type_key], one_hot_target=None)
+    sim_matrix = bench.get_results_details()['SMI-disc'][unique_plot_cts].copy()
+    
     k = cell_type_key
     unique_values = list(sorted(list(embed.obs[k].astype(str).unique())))
     method_embed_subset = embed[embed_subset.obs.index].copy()
     method_embed_subset.obs[cell_type_key] = pd.Categorical(method_embed_subset.obs[cell_type_key], unique_plot_cts)
     embed_subset = embed_subset[np.argsort(method_embed_subset.obs[cell_type_key].cat.codes)]
     method_embed_subset.uns[k + "_colors"] = 'black'
-    sim_matrix = metric_results[method_name]['Mutual Info Score'][unique_plot_cts].values
     vars = method_embed_subset.var
     vars['van'] = ~ (np.abs(method_embed_subset.X).max(axis=0, keepdims=True) > np.abs(method_embed_subset.X).max() / 5).flatten()
+    vars['van'] = np.logical_and(vars['van'], (sim_matrix.max(axis=1) < 0.1).values)
     sim_matrix = (sim_matrix + 0.1) * (~(vars['van'].values[:, np.newaxis]))
     vars['plot_order'] = np.hstack([sim_matrix, sim_matrix * 0.01 + 0.3]).argmax(axis=1).tolist()
     if 'title' not in vars.columns:
@@ -234,15 +254,65 @@ for method_name, embed in embeds.items():
 
 
 
+# # UMAPs of all models
+
+# +
+size = 3
+methods_to_plot = ["DRVI", "DRVI-IK", "scVI", "scETM", "MOFA", "LIGER", "MICHIGAN-opt", "PCA", "ICA", "TCVAE-opt", "scVI-PCA", "scVI-ICA",]
+
+# n_col = len(embeds)
+n_col = len(methods_to_plot)
+for _, col in enumerate(plot_columns):
+    fig,axs=plt.subplots(1, n_col,
+                     figsize=(n_col * size, 1 * size),
+                     sharey='row', squeeze=False)
+    j = 0
+    # for i, (method_name, embed) in enumerate(embeds.items()):
+    for i, method_name in enumerate(methods_to_plot):
+        embed = embeds[method_name]
+    
+        pos = (-0.1, 0.5)
+        
+        ax = axs[j, i]
+        unique_values = list(sorted(list(embed.obs[col].astype(str).unique())))
+        # if len(unique_values) <= 8:
+        #     palette = dict(zip(unique_values, wong_pallete))
+        if len(unique_values) <= 10:
+            palette = dict(zip(unique_values, cat_10_pallete))
+        elif len(unique_values) <= 20:
+            palette = dict(zip(unique_values, cat_20_pallete))
+        elif len(unique_values) <= 102:
+            palette = dict(zip(unique_values, cat_100_pallete))
+        else:
+            palette = None
+        sc.pl.umap(embed, color=col, 
+                   palette=palette, 
+                   ax=ax, show=False, frameon=False, title='' if j != 0 else pretify_method_name(method_name), 
+                   legend_loc='none' if i != n_col - 1 else 'right margin',
+                   colorbar_loc=None if i != n_col - 1 else 'right')
+        if len(unique_values) > 30:
+            if i == n_col - 1:
+                ax.legend(ncol=len(unique_values)//15+1, bbox_to_anchor=(1.1, 1.05))
+        if i == 0:
+            ax.annotate(col_mapping[col], zorder=100, fontsize=12,
+                        xy=pos, xytext=pos, textcoords='axes fraction', rotation='vertical', va='center', ha='center')
+
+    plt.subplots_adjust(left=0.1,
+                        bottom=0.05,
+                        right=0.95,
+                        top=0.95,
+                        wspace=0.1,
+                        hspace=0.1)
+    
+    plt.savefig(output_dir / f'umaps_for_all_runs_{col}.pdf', bbox_inches='tight')
+
+# -
+
 
 
 # ## DRVI
 
 
-
-embed_drvi = embeds['DRVI']
-model_drvi = drvi.model.DRVI.load(RUNS_TO_LOAD['DRVI'] / 'model.pt', adata, prefix='v_0_1_0_')
-adata.obsm['X_umap_drvi'] = embed_drvi[adata.obs.index].obsm['X_umap']
 
 # +
 col = cell_type_key
@@ -268,9 +338,6 @@ fig.savefig(output_dir / f'drvi_umap.pdf', bbox_inches='tight', dpi=300)
 model = model_drvi
 embed = embed_drvi
 
-drvi.utils.tl.set_latent_dimension_stats(model, embed)
-drvi.utils.pl.plot_latent_dimension_stats(embed, ncols=2)
-
 filename = RUNS_TO_LOAD['DRVI'] / "traverse_adata.h5ad"
 if not (filename).exists():
     traverse_adata = drvi.utils.tl.traverse_latent(model, embed, n_samples=200, max_noise_std=0.2)
@@ -288,6 +355,18 @@ fig.savefig(output_dir / f'drvi_red_blue_umaps.pdf', bbox_inches='tight', dpi=30
 
 fig = drvi.utils.pl.show_top_differential_vars(traverse_adata, key="combined_score", score_threshold=0.0, show=False, ncols=6,)
 fig.savefig(output_dir / f'interpretability_all.pdf', bbox_inches='tight', dpi=300)
+
+# +
+dimensions_interpretability = drvi.utils.tools.iterate_on_top_differential_vars(
+    traverse_adata, key="combined_score", score_threshold=0.0
+)
+
+# For making it brief we just iterate over 5 dimensions
+for dim_title, gene_scores in dimensions_interpretability:
+    print(dim_title)
+    gene_scores = gene_scores[gene_scores > gene_scores.max() / 10]
+    print(",".join(gene_scores[:20].index))
+# -
 
 
 
@@ -446,6 +525,194 @@ shutil.move(output_dir / 'scib_results.svg',
             output_dir / f'eval_integration_after_pruning_scib.svg')
 
 # -
+
+
+
+
+
+
+# ## Annotation improvement
+
+model = model_drvi
+embed = embed_drvi
+
+filename = RUNS_TO_LOAD['DRVI'] / "traverse_adata.h5ad"
+if not (filename).exists():
+    traverse_adata = drvi.utils.tl.traverse_latent(model, embed, n_samples=200, max_noise_std=0.2)
+    drvi.utils.tl.calculate_differential_vars(traverse_adata)
+    traverse_adata.write(filename)
+else:
+    traverse_adata = sc.read(filename)
+traverse_adata
+
+# +
+adata_aligned = adata_full[embed.obs.index].copy()
+adata_aligned.X = adata_aligned.layers['counts'].copy()
+sc.pp.normalize_total(adata_aligned, target_sum=1e4)
+sc.pp.log1p(adata_aligned)
+adata_aligned.layers['log1p'] = adata_aligned.X.copy()
+adata_aligned.X = adata_aligned.layers['counts'].copy()
+
+adata_aligned.obsm['X_umap_drvi'] = embed[adata_aligned.obs.index].obsm['X_umap']
+
+adata_aligned
+# -
+
+
+
+
+
+dim_subset = ['DR 30-']
+
+fig = drvi.utils.pl.plot_latent_dims_in_umap(embed, directional=True, ncols=3, show=False, wspace=0.1, hspace=0.25, color_bar_rescale_ratio=0.95,
+                                             dim_subset=dim_subset)
+fig.savefig(output_dir / f'drvi_additional_interesting_latents_on_umap_fib.pdf', bbox_inches='tight', dpi=300)
+plt.show()
+
+fig = drvi.utils.pl.show_top_differential_vars(traverse_adata, key="combined_score", score_threshold=0.0, show=False,
+                                               dim_subset=dim_subset)
+fig.savefig(output_dir / f'drvi_additional_interesting_latents_interpretability_fib.pdf', bbox_inches='tight', dpi=300)
+plt.show()
+
+cutoff = np.abs(embed[:, embed.var['title'] == dim_subset[0][:-1]].X).max() / 2
+adata_aligned.obs['Subset status'] = np.where(embed[adata_aligned.obs.index, embed.var[embed.var['title'] == dim_subset[0][:-1]].index].X.flatten()
+                                      < -cutoff, 'Fibroblasts', 'other')
+adata_aligned.obs['Subset status']
+
+sc.pl.embedding(adata_aligned, basis='X_umap_drvi', color=['Subset status'], groups=['Fibroblasts'], 
+                title='', frameon=False, show=False, na_in_legend=False)
+plt.savefig(output_dir / f'drvi_additional_interesting_latents_umap_annot_fib.pdf', bbox_inches='tight', dpi=300)
+plt.show()
+
+adata_aligned[adata_aligned.obs['Subset status'] == 'Fibroblasts'].obs[cell_type_key].value_counts()
+
+adata_aligned.obs['new_cell_type'] = np.where(
+    adata_aligned.obs['Subset status'] == 'Fibroblasts',
+    # adata_aligned.obs[cell_type_key].astype(str) + ' -> Fibroblasts',
+    'Fibroblasts',
+    adata_aligned.obs[cell_type_key],
+)
+
+ct_order = [
+    'Fibroblasts',
+    'HSPCs',
+    'Erythroid progenitors',
+    'Megakaryocyte progenitors',
+    'Monocyte-derived dendritic cells',
+]
+
+marker_genes_for_mast = {
+    'Fibroblasts': ['COL1A1'],
+    'HSPC': ['CD34'],
+    'Megakaryocyte prog.': ['GATA2'],
+    'Erythroid prog.': ['GATA1'],
+    'DCs': ['CD1C'],
+}
+sc.pl.dotplot(adata_aligned, marker_genes_for_mast, groupby='new_cell_type', standard_scale='var', layer='log1p',
+              categories_order=ct_order + [c for c in adata_aligned.obs['new_cell_type'].unique() if c not in ct_order], show=False)
+plt.savefig(output_dir / f'drvi_additional_interesting_latents_dotplot_fib.pdf', bbox_inches='tight', dpi=300)
+plt.show()
+
+
+
+pd.Series((adata_aligned[:, 'COL1A1'].layers['log1p']).flatten()).plot.hist(bins=100, log=True)
+
+print(sum(adata_aligned[:, 'COL1A1'].X >= 1.5))
+adata_aligned.obs['alaki'] = np.where((adata_aligned[:, 'COL1A1'].X >= 1.5).flatten(), 'Fib', 'no')
+sc.pl.embedding(adata_aligned, basis='X_umap_drvi', color=['alaki'],
+                title='', frameon=False, show=False, na_in_legend=False)
+
+from sklearn.metrics.cluster import contingency_matrix, entropy, mutual_info_score
+from sklearn.preprocessing import KBinsDiscretizer
+
+# +
+discretizer = KBinsDiscretizer(n_bins=5, encode='ordinal', strategy='uniform', random_state=123)
+target_disc = discretizer.fit_transform(adata_aligned[:, 'COL1A1'].X + 0.).flatten()
+h_target = entropy(target_disc)
+
+for method_name, embed_ in embeds.items():
+    print(method_name)
+    discretizer = KBinsDiscretizer(n_bins=10, encode="ordinal", strategy="uniform", random_state=123)
+    embed_discrete = discretizer.fit_transform(embed_[adata_aligned.obs.index].X)
+
+    print(embed_discrete.shape)
+
+    pairwise_mi = np.zeros(embed_discrete.shape[1])
+    for i in range(embed_discrete.shape[1]):
+        contingency = contingency_matrix(embed_discrete[:, i], target_disc, sparse=True)
+        mi = mutual_info_score(None, None, contingency=contingency)
+        pairwise_mi[i] = mi / h_target
+    print(pairwise_mi.max())
+    print(pairwise_mi)
+# -
+
+
+
+
+
+
+
+dim_subset = ['DR 20+', 'DR 29+', 'DR 17-']
+
+fig = drvi.utils.pl.plot_latent_dims_in_umap(embed, directional=True, ncols=3, show=False, wspace=0.1, hspace=0.25, color_bar_rescale_ratio=0.95,
+                                             dim_subset=dim_subset)
+fig.savefig(output_dir / f'drvi_additional_interesting_latents_on_umap_DCs.pdf', bbox_inches='tight', dpi=300)
+plt.show()
+
+fig = drvi.utils.pl.show_top_differential_vars(traverse_adata, key="combined_score", score_threshold=0.0, show=False,
+                                               dim_subset=dim_subset)
+fig.savefig(output_dir / f'drvi_additional_interesting_latents_interpretability_DCs.pdf', bbox_inches='tight', dpi=300)
+plt.show()
+
+adata_aligned.obs['Subset status'] = np.where(
+    adata_aligned.obs[cell_type_key].isin(['Monocyte-derived dendritic cells']),
+    np.where(
+        embed[adata_aligned.obs.index, embed.var[embed.var['title'] == dim_subset[1][:-1]].index].X.flatten() > 3, 'DC1', 
+        np.where(
+            embed[adata_aligned.obs.index, embed.var[embed.var['title'] == dim_subset[2][:-1]].index].X.flatten() < -3, 'pDC',
+            'DC2'
+        )
+    ),
+    'other'
+)
+adata_aligned.obs['Subset status']
+
+sc.pl.embedding(adata_aligned, basis='X_umap_drvi', color=['Subset status'], groups=['DC1', 'DC2', 'pDC'], 
+                title='', frameon=False, show=False, na_in_legend=False)
+plt.savefig(output_dir / f'drvi_additional_interesting_latents_umap_annot_DCs.pdf', bbox_inches='tight', dpi=300)
+plt.show()
+
+adata_aligned.obs['new_cell_type'] = np.where(
+    adata_aligned.obs['Subset status'].isin(['DC1', 'DC2', 'pDC']),
+    adata_aligned.obs[cell_type_key].astype(str) + ' -> ' + adata_aligned.obs['Subset status'].astype(str),
+    adata_aligned.obs[cell_type_key],
+)
+
+adata_aligned.obs['new_cell_type'].value_counts()
+
+ct_order = [
+    'Monocyte-derived dendritic cells' + ' -> ' + 'DC1',
+    'Monocyte-derived dendritic cells' + ' -> ' + 'DC2',
+    'Monocyte-derived dendritic cells' + ' -> ' + 'pDC',
+    'Plasmacytoid dendritic cells',
+]
+
+marker_genes_for_mast = {
+    'DC1': ['BATF3', 'CADM1', 'CLEC9A'],
+    'DC2': ['CLEC10A', 'FCER1A', 'CD1C'],
+    'pDC': ['IL3RA', 'LILRA4', 'PLD4'],
+}
+sc.pl.dotplot(adata_aligned, marker_genes_for_mast, groupby='new_cell_type', standard_scale='var', layer='log1p',
+              categories_order=ct_order + [c for c in adata_aligned.obs['new_cell_type'].unique() if c not in ct_order], show=False)
+plt.savefig(output_dir / f'drvi_additional_interesting_latents_dotplot_DCs.pdf', bbox_inches='tight', dpi=300)
+plt.show()
+
+
+
+
+
+
+
 
 
 

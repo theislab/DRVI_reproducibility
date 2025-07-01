@@ -8,9 +8,9 @@
 #       format_version: '1.5'
 #       jupytext_version: 1.15.2
 #   kernelspec:
-#     display_name: drvi-repr
+#     display_name: drvi
 #     language: python
-#     name: drvi-repr
+#     name: drvi
 # ---
 
 # # Imports
@@ -54,6 +54,17 @@ sc.set_figure_params(vector_friendly=True, dpi_save=300)
 import mplscience
 mplscience.available_styles()
 mplscience.set_style()
+
+
+# # Utils
+
+def trim_umap(embed, old_key='X_umap', new_key='X_umap', threshold=1e-5):
+    x_min, x_max = np.quantile(embed.obsm[old_key][:, 0], (threshold, 1-threshold))
+    x_min, x_max = float(x_min), float(x_max)
+    y_min, y_max = np.quantile(embed.obsm[old_key][:, 1], (threshold, 1-threshold))
+    y_min, y_max = float(y_min), float(y_max)
+    embed.obsm[new_key] = np.vstack([embed.obsm[old_key][:, 0].clip(x_min, x_max), embed.obsm[old_key][:, 1].clip(y_min, y_max)]).T
+
 
 
 # # Config
@@ -129,7 +140,7 @@ for k,v in RUNS_TO_LOAD.items():
 
 # +
 embeds = {}
-methods_to_consider = ["DRVI", "DRVI-IK", "scVI", "PCA", "ICA", "MICHIGAN-opt", "TCVAE-opt", "MOFA"]
+methods_to_consider = ["DRVI", "DRVI-IK", "scVI", "scETM", "MOFA", "LIGER", "PCA", "ICA", "MICHIGAN-opt", "TCVAE-opt"]
 
 random_order = None
 for method_name, run_path in RUNS_TO_LOAD.items():
@@ -140,6 +151,7 @@ for method_name, run_path in RUNS_TO_LOAD.items():
         embed = sc.read(run_path)
     else:
         embed = sc.read(run_path / 'latent.h5ad')
+    trim_umap(embed, threshold=1e-3)
     pp_function(embed)
     if random_order is None:
         random_order = embed.obs.sample(frac=1.).index
@@ -225,7 +237,7 @@ unique_values = list(sorted(list(embed.obs[col].astype(str).unique())))
 palette = dict(zip(unique_values, cat_20_pallete))
 fig = sc.pl.umap(embed, color=col, palette=palette, show=False, frameon=False, title='', 
                    legend_loc='right margin')
-plt.legend(ncol=(len(unique_values) + 2) // 3, bbox_to_anchor=(1.1, 1.05))
+plt.legend(ncol=(len(unique_values) + 2) // 1, bbox_to_anchor=(1.1, 1.05))
 dir_name = output_dir
 dir_name.mkdir(parents=True, exist_ok=True)
 plt.savefig(dir_name / f'umaps_{col}_legend.pdf', bbox_inches='tight', dpi=300)

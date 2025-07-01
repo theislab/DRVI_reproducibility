@@ -8,9 +8,9 @@
 #       format_version: '1.5'
 #       jupytext_version: 1.15.2
 #   kernelspec:
-#     display_name: drvi-repr
+#     display_name: drvi
 #     language: python
-#     name: drvi-repr
+#     name: drvi
 # ---
 
 # # Imports
@@ -42,6 +42,7 @@ from pathlib import Path
 from scib_metrics.benchmark import Benchmarker
 
 import drvi
+from drvi.utils.metrics import DiscreteDisentanglementBenchmark
 from drvi_notebooks.utils.data.data_configs import get_data_info
 from drvi_notebooks.utils.run_info import get_run_info_for_dataset
 from drvi_notebooks.utils.method_info import pretify_method_name
@@ -97,9 +98,15 @@ wong_pallete = [
 ]
 cat_100_pallete = sc.plotting.palettes.godsnot_102
 
+
 # ## Utils
 
-
+def trim_umap(embed, old_key='X_umap', new_key='X_umap', threshold=1e-5):
+    x_min, x_max = np.quantile(embed.obsm[old_key][:, 0], (threshold, 1-threshold))
+    x_min, x_max = float(x_min), float(x_max)
+    y_min, y_max = np.quantile(embed.obsm[old_key][:, 1], (threshold, 1-threshold))
+    y_min, y_max = float(y_min), float(y_max)
+    embed.obsm[new_key] = np.vstack([embed.obsm[old_key][:, 0].clip(x_min, x_max), embed.obsm[old_key][:, 1].clip(y_min, y_max)]).T
 
 
 
@@ -124,6 +131,7 @@ for method_name, run_path in RUNS_TO_LOAD.items():
         embed = sc.read(run_path)
     else:
         embed = sc.read(run_path / 'latent.h5ad')
+    trim_umap(embed, threshold=1e-3)
     pp_function(embed)
     if random_order is None:
         random_order = embed.obs.sample(frac=1.).index
@@ -136,17 +144,19 @@ adata
 
 
 
+embed_drvi = embeds['DRVI']
+model_drvi = drvi.model.DRVI.load(RUNS_TO_LOAD['DRVI'] / 'model.pt', adata, prefix='v_0_1_0_')
+adata.obsm['X_umap_drvi'] = embed_drvi[adata.obs.index].obsm['X_umap']
 
+drvi.utils.tl.set_latent_dimension_stats(model_drvi, embed_drvi)
+drvi.utils.pl.plot_latent_dimension_stats(embed_drvi, ncols=2)
+
+embed_drvi.write_h5ad(RUNS_TO_LOAD['DRVI'] / 'latent_sorted.h5ad')
 
 
 
 
 # # Heatmaps
-
-noise_condition = 'no_noise'
-metric_results_pkl_address = proj_dir / 'results' / f'eval_disentanglement_fine_metric_results_{run_name}_{noise_condition}.pkl'
-with open(metric_results_pkl_address, 'rb') as f:
-    metric_results = pickle.load(f)
 
 unique_plot_cts = ["CD4 T cells", "CD8 T cells", "T cells proliferating", "NK cells", "AT2", "AT2 proliferating", "AT1", "AT0", "pre-TB secretory", "Goblet (nasal)", 
                    "Club (non-nasal)", "Goblet (bronchial)", "Goblet (subsegmental)", "Club (nasal)", "Tuft", "SMG serous (bronchial)", "SMG serous (nasal)", 
@@ -163,8 +173,20 @@ embed_subset = drvi.utils.pl.make_balanced_subsample(embed, cell_type_key, min_c
 embed_subset.obs[cell_type_key] = pd.Categorical(embed_subset.obs[cell_type_key], unique_plot_cts)
 embed_subset = embed_subset[embed_subset.obs.sort_values(cell_type_key).index].copy()
 
+
+
 for method_name, embed in embeds.items():
     print(method_name)
+
+    # Load mutual info of dims and cell-type from benchmarking for nicer plotting
+    version = DiscreteDisentanglementBenchmark.version
+    if str(RUNS_TO_LOAD[method_name]).endswith('.h5ad'):
+        bench_filename = Path(str(RUNS_TO_LOAD[method_name])[:-len('.h5ad')] + f'_DR_benchmark_on_{cell_type_key}_{version}.pkl')
+    else:
+        bench_filename = RUNS_TO_LOAD[method_name] / f'DR_benchmark_on_{cell_type_key}_{version}.pkl'
+    bench = DiscreteDisentanglementBenchmark.load(bench_filename, embed.X, discrete_target=embed.obs[cell_type_key], one_hot_target=None)
+    sim_matrix = bench.get_results_details()['SMI-disc'][unique_plot_cts].copy()
+    
     k = cell_type_key
     unique_values = list(sorted(list(embed.obs[k].astype(str).unique())))
     palette = dict(zip(unique_values, cat_100_pallete))
@@ -172,16 +194,17 @@ for method_name, embed in embeds.items():
     method_embed_subset.obs[cell_type_key] = pd.Categorical(method_embed_subset.obs[cell_type_key], unique_plot_cts)
     method_embed_subset = method_embed_subset[np.argsort(method_embed_subset.obs[cell_type_key].cat.codes)]
     method_embed_subset.uns[k + "_colors"] = 'black'
-    sim_matrix = metric_results[method_name]['Mutual Info Score'][unique_plot_cts].values
     vars = method_embed_subset.var
-    vars['van'] = ~ (method_embed_subset.X.max(axis=0, keepdims=True) > method_embed_subset.X.max() / 10).flatten()
-    sim_matrix = sim_matrix * ~vars['van'].values[:, np.newaxis]
-    vars['plot_order'] = np.hstack([sim_matrix, sim_matrix[:, 0:1] * 0 + 0.3]).argmax(axis=1).tolist()
+    vars['van'] = ~ (np.abs(method_embed_subset.X).max(axis=0, keepdims=True) > np.abs(method_embed_subset.X).max() / 5).flatten()
+    vars['van'] = np.logical_and(vars['van'], (sim_matrix.max(axis=1) < 0.1).values)
+    sim_matrix = (sim_matrix + 0.1) * (~(vars['van'].values[:, np.newaxis]))
+    vars['plot_order'] = np.hstack([sim_matrix, sim_matrix * 0.01 + 0.3]).argmax(axis=1).tolist()
     if 'title' not in vars.columns:
         vars['title'] = np.char.add('Dim ', (1 + np.arange(method_embed_subset.n_vars)).astype(str))
         vars['order'] = np.arange(method_embed_subset.n_vars)
     vars['not_interesting'] = np.logical_or(vars['van'], vars['plot_order']==sim_matrix.shape[1])
     vars = pd.concat([vars.query('~not_interesting').sort_values('plot_order'), vars.query('not_interesting').sort_values('order')])
+    # method_embed_subset.X = (method_embed_subset.X / method_embed_subset.X.max(axis=0, keepdims=True))
     fig = sc.pl.heatmap(
         method_embed_subset,
         vars['title'],
@@ -219,19 +242,71 @@ for method_name, embed in embeds.items():
 
 
 
+# +
+size = 3
+methods_to_plot = ["DRVI", "DRVI-IK", "scVI", "scETM", "MOFA", "LIGER", "MICHIGAN-opt", "PCA", "ICA", "TCVAE-opt", "scVI-PCA", "scVI-ICA",]
+
+# dataset column is overridden in LIGER. reverting
+embeds['LIGER'].obs['dataset'] = adata[embeds['LIGER'].obs.index].obs['dataset']
+
+# n_col = len(embeds)
+n_col = len(methods_to_plot)
+for _, col in enumerate(plot_columns):
+    fig,axs=plt.subplots(1, n_col,
+                     figsize=(n_col * size, 1 * size),
+                     sharey='row', squeeze=False)
+    j = 0
+    # for i, (method_name, embed) in enumerate(embeds.items()):
+    for i, method_name in enumerate(methods_to_plot):
+        embed = embeds[method_name]
+    
+        pos = (-0.1, 0.5)
+        
+        ax = axs[j, i]
+        unique_values = list(sorted(list(embed.obs[col].astype(str).unique())))
+        # if len(unique_values) <= 8:
+        #     palette = dict(zip(unique_values, wong_pallete))
+        if len(unique_values) <= 10:
+            palette = dict(zip(unique_values, cat_10_pallete))
+        elif len(unique_values) <= 20:
+            palette = dict(zip(unique_values, cat_20_pallete))
+        elif len(unique_values) <= 102:
+            palette = dict(zip(unique_values, cat_100_pallete))
+        else:
+            palette = None
+        sc.pl.umap(embed, color=col, 
+                   palette=palette, 
+                   ax=ax, show=False, frameon=False, title='' if j != 0 else pretify_method_name(method_name), 
+                   legend_loc='none' if i != n_col - 1 else 'right margin',
+                   colorbar_loc=None if i != n_col - 1 else 'right')
+        if len(unique_values) > 30:
+            if i == n_col - 1:
+                ax.legend(ncol=len(unique_values)//15+1, bbox_to_anchor=(1.1, 1.05))
+        if i == 0:
+            ax.annotate(col_mapping[col], zorder=100, fontsize=12,
+                        xy=pos, xytext=pos, textcoords='axes fraction', rotation='vertical', va='center', ha='center')
+
+    plt.subplots_adjust(left=0.1,
+                        bottom=0.05,
+                        right=0.95,
+                        top=0.95,
+                        wspace=0.1,
+                        hspace=0.1)
+    
+    plt.savefig(output_dir / f'umaps_for_all_runs_{col}.pdf', bbox_inches='tight')
+
+# -
+
+
+
+
+
 # # DRVI analysis
 
 # ## DRVI interpretability
 
-embed_drvi = embeds['DRVI']
-model_drvi = drvi.model.DRVI.load(RUNS_TO_LOAD['DRVI'] / 'model.pt', adata, prefix='v_0_1_0_')
-adata.obsm['X_umap_drvi'] = embed_drvi[adata.obs.index].obsm['X_umap']
-
 model = model_drvi
 embed = embed_drvi
-
-drvi.utils.tl.set_latent_dimension_stats(model, embed)
-drvi.utils.pl.plot_latent_dimension_stats(embed, ncols=2)
 
 filename = RUNS_TO_LOAD['DRVI'] / "traverse_adata.h5ad"
 if not (filename).exists():
@@ -241,6 +316,25 @@ if not (filename).exists():
 else:
     traverse_adata = sc.read(filename)
 traverse_adata
+
+# +
+dimensions_interpretability = drvi.utils.tools.iterate_on_top_differential_vars(
+    traverse_adata, key="combined_score", score_threshold=0.0
+)
+
+# For making it brief we just iterate over 5 dimensions
+for dim_title, gene_scores in dimensions_interpretability:
+    print(dim_title)
+
+    gene_scores = gene_scores[gene_scores > gene_scores.max() / 10]
+    # print(gene_scores)
+
+    relevant_genes = gene_scores.index.to_list()[:10]
+
+    print(relevant_genes)
+# -
+
+
 
 # ## Heatmap for figure
 
@@ -493,36 +587,25 @@ fig = drvi.utils.pl.plot_relevant_genes_on_umap(adata, embed, traverse_adata, "c
 
 
 
+# # Emergence of rare cell-types when clustering
 
+embed_drvi = embeds['DRVI']
+model_drvi = drvi.model.DRVI.load(RUNS_TO_LOAD['DRVI'] / 'model.pt', adata, prefix='v_0_1_0_')
+adata.obsm['X_umap_drvi'] = embed_drvi[adata.obs.index].obsm['X_umap']
 
-# # Clustering level for which rare cell-types emerge
+drvi.utils.tl.set_latent_dimension_stats(model_drvi, embed_drvi)
+drvi.utils.pl.plot_latent_dimension_stats(embed_drvi, ncols=2)
 
-if (RUNS_TO_LOAD['scVI'] / 'embed_with_multiple_res_leidens.h5ad').exists():
-    embed_scvi = sc.read_h5ad(RUNS_TO_LOAD['scVI'] / 'embed_with_multiple_res_leidens.h5ad')
-else:
-    embed_scvi = embeds['scVI'].copy()
-    sc.pp.neighbors(embed_scvi, use_rep="qz_mean", n_neighbors=10, n_pcs=embed_scvi.obsm["qz_mean"].shape[1])                
-    embed_scvi
+resolutions_to_plot = [0.01, 0.2, 1., 1.5, 2., 2.5, 3., 4., 5., 6., 7.0, 8., 9., 10.]
 
-cluster_resolutions = [0.01, 0.2, 1., 1.5, 2., 2.5, 3., 3.5, 4., 5., 6., 7.0, 7.5, 8., 9., 10., 15., 20., 25.]
-cluster_counts = {}
-for res in cluster_resolutions:
-    key_added = f'leiden_{res}'
-    if key_added not in embed_scvi.obs.columns:
-        sc.tl.leiden(embed_scvi, resolution=res, key_added=key_added)
-    cluster_counts[key_added] = embed_scvi.obs[key_added].nunique()
-    print(key_added, cluster_counts[key_added])
-
-embed_scvi.write(RUNS_TO_LOAD['scVI'] / 'embed_with_multiple_res_leidens.h5ad')
-
-
+# ## Thresholding DRVI
 
 dim_indicators = pd.DataFrame(
     np.vstack([
-    (embed_drvi[embed_scvi.obs.index].X[:, np.argmax(embed.var['title'] == 'DR 39')] > 4.7) + 0.,
-    (embed_drvi[embed_scvi.obs.index].X[:, np.argmax(embed.var['title'] == 'DR 32')] > 2) + 0.,
-    (embed_drvi[embed_scvi.obs.index].X[:, np.argmax(embed.var['title'] == 'DR 26')] < -2.3) + 0.,
-    (embed_drvi[embed_scvi.obs.index].X[:, np.argmax(embed.var['title'] == 'DR 34')] > 2.9) + 0.,
+    (embed_drvi.X[:, np.argmax(embed_drvi.var['title'] == 'DR 39')] > 4.7) + 0.,
+    (embed_drvi.X[:, np.argmax(embed_drvi.var['title'] == 'DR 32')] > 2) + 0.,
+    (embed_drvi.X[:, np.argmax(embed_drvi.var['title'] == 'DR 26')] < -2.3) + 0.,
+    (embed_drvi.X[:, np.argmax(embed_drvi.var['title'] == 'DR 34')] > 2.9) + 0.,
     ]).astype(int).T,
     columns = ['DR 39+', 'DR 32+', 'DR 26-', 'DR 34+']
 )
@@ -533,7 +616,7 @@ from sklearn.metrics.pairwise import pairwise_distances
 interesting_cts = [
     "AT0", "pre-TB secretory", "Migratory DCs", "Hillock-like",
 ]
-ct_indicators = pd.get_dummies(embed_scvi.obs[cell_type_key])[interesting_cts] + 0.
+ct_indicators = pd.get_dummies(embed_drvi.obs[cell_type_key])[interesting_cts] + 0.
 
 # For finding thresholds
 # aligned_cells = embed_drvi[embed_scvi.obs.index].X
@@ -559,28 +642,50 @@ result = pd.DataFrame(pairwise_jaccard, index=interesting_cts, columns=dim_indic
 drvi_threshold_jaccard = result.max(axis=1)
 print(drvi_threshold_jaccard)
 # -
+# ## scVI rare cell-types emerge point
+
+if (RUNS_TO_LOAD['scVI'] / 'embed_with_multiple_res_leidens.h5ad').exists():
+    embed_scvi = sc.read_h5ad(RUNS_TO_LOAD['scVI'] / 'embed_with_multiple_res_leidens.h5ad')
+else:
+    embed_scvi = embeds['scVI'].copy()
+    sc.pp.neighbors(embed_scvi, use_rep="qz_mean", n_neighbors=10, n_pcs=embed_scvi.obsm["qz_mean"].shape[1])                
+    embed_scvi
+
+cluster_resolutions = [0.01, 0.2, 1., 1.5, 2., 2.5, 3., 3.5, 4., 5., 6., 7.0, 7.5, 8., 9., 10., 15., 20., 25.]
+cluster_counts_scvi = {}
+for res in cluster_resolutions:
+    key_added = f'leiden_{res}'
+    if key_added not in embed_scvi.obs.columns:
+        sc.tl.leiden(embed_scvi, resolution=res, key_added=key_added)
+    cluster_counts_scvi[key_added] = embed_scvi.obs[key_added].nunique()
+    print(key_added, cluster_counts_scvi[key_added])
+
+embed_scvi.write(RUNS_TO_LOAD['scVI'] / 'embed_with_multiple_res_leidens.h5ad')
 
 
 
-jaccard_results = {}
-resolutions_to_plot = [0.01, 0.2, 1., 1.5, 2., 2.5, 3., 4., 5., 6., 7.0, 8., 9., 10.]
+
+
+
+scvi_jaccard_results = {}
+ct_indicators = pd.get_dummies(embed_scvi.obs[cell_type_key])[interesting_cts] + 0.
 for res in cluster_resolutions:
     key_added = f'leiden_{res}'
     print("\n\n\n", key_added, embed_scvi.obs[key_added].nunique())
     cluster_indicators = pd.get_dummies(embed_scvi.obs[key_added]) + 0.
     pairwise_jaccard = 1 - pairwise_distances(ct_indicators.values.T, cluster_indicators.values.T, metric="jaccard", n_jobs=-1)
     result = pd.DataFrame(pairwise_jaccard, index=interesting_cts, columns=cluster_indicators.columns)
-    jaccard_results[key_added] = result.max(axis=1)
-    print(jaccard_results[key_added])
+    scvi_jaccard_results[key_added] = result.max(axis=1)
+    print(scvi_jaccard_results[key_added])
 
     if res not in resolutions_to_plot:
-        del jaccard_results[key_added]
+        del scvi_jaccard_results[key_added]
 
 
 
 # +
 # Create a DataFrame from the dictionary
-df = pd.DataFrame(jaccard_results)
+df = pd.DataFrame(scvi_jaccard_results)
 
 # Reset the index so 'cell_type' becomes a column
 df = df.reset_index().rename(columns={'index': 'cell_type'})
@@ -589,7 +694,7 @@ df = df.reset_index().rename(columns={'index': 'cell_type'})
 df_melted = df.melt(id_vars='cell_type', var_name='leiden_resolution', value_name='jaccard_value')
 
 # Map resolutions to cluster counts
-df_melted['cluster_count'] = df_melted['leiden_resolution'].map(cluster_counts)
+df_melted['cluster_count'] = df_melted['leiden_resolution'].map(cluster_counts_scvi)
 
 # Sort by cluster count to keep x-axis in correct order
 df_melted = df_melted.sort_values('cluster_count')
@@ -608,12 +713,12 @@ sns.lineplot(
 )
 
 # Customize x-axis to display both resolution and cluster count
-xticks = [cluster_counts[key] for key in cluster_counts if key in df.columns]
+xticks = [cluster_counts_scvi[key] for key in cluster_counts_scvi if key in df.columns]
 xlabels = []
-for key in cluster_counts:
+for key in cluster_counts_scvi:
     if key in df.columns:
         res = key.split("_")[1]
-        label = f'resolution = {res}\n({cluster_counts[key]} clusters)' 
+        label = f'resolution = {res}\n({cluster_counts_scvi[key]} clusters)' 
         xlabels.append(label)
 plt.xticks(ticks=xticks, labels=xlabels, rotation=90)
 
@@ -649,6 +754,387 @@ plt.show()
 # -
 
 
+
+
+
+
+# ## DRVI rare cell-types emerge point
+
+if (RUNS_TO_LOAD['DRVI'] / 'embed_with_multiple_res_leidens.h5ad').exists():
+    embed_drvi_leiden = sc.read_h5ad(RUNS_TO_LOAD['DRVI'] / 'embed_with_multiple_res_leidens.h5ad')
+else:
+    embed_drvi_leiden = embeds['DRVI'].copy()
+    sc.pp.neighbors(embed_drvi_leiden, use_rep="qz_mean", n_neighbors=10, n_pcs=embed_drvi_leiden.obsm["qz_mean"].shape[1])                
+    embed_drvi_leiden
+
+cluster_counts_drvi = {}
+cluster_resolutions = [0.01, 0.2, 1., 1.5, 2., 2.5, 3., 3.5, 4., 5., 6., 7.0, 7.5, 8., 9., 10.]
+ct_indicators = pd.get_dummies(embed_drvi_leiden.obs[cell_type_key])[interesting_cts] + 0.
+for res in cluster_resolutions:
+    key_added = f'leiden_{res}'
+    if key_added not in embed_drvi_leiden.obs.columns:
+        sc.tl.leiden(embed_drvi_leiden, resolution=res, key_added=key_added)
+        embed_drvi_leiden.write(RUNS_TO_LOAD['DRVI'] / 'embed_with_multiple_res_leidens.h5ad')
+    cluster_counts_drvi[key_added] = embed_drvi_leiden.obs[key_added].nunique()
+    print(key_added, cluster_counts_drvi[key_added])
+
+embed_drvi_leiden.write(RUNS_TO_LOAD['DRVI'] / 'embed_with_multiple_res_leidens.h5ad')
+
+
+
+drvi_jaccard_results = {}
+resolutions_to_plot = [0.01, 0.2, 1., 1.5, 2., 2.5, 3., 4., 5., 6., 7.0, 8., 9., 10.]
+for res in cluster_resolutions:
+    key_added = f'leiden_{res}'
+    print("\n\n\n", key_added, embed_drvi_leiden.obs[key_added].nunique())
+    cluster_indicators = pd.get_dummies(embed_drvi_leiden.obs[key_added]) + 0.
+    pairwise_jaccard = 1 - pairwise_distances(ct_indicators.values.T, cluster_indicators.values.T, metric="jaccard", n_jobs=-1)
+    result = pd.DataFrame(pairwise_jaccard, index=interesting_cts, columns=cluster_indicators.columns)
+    drvi_jaccard_results[key_added] = result.max(axis=1)
+    print(drvi_jaccard_results[key_added])
+
+    if res not in resolutions_to_plot:
+        del drvi_jaccard_results[key_added]
+
+
+
+# +
+# Create a DataFrame from the dictionary
+df = pd.DataFrame(drvi_jaccard_results)
+
+# Reset the index so 'cell_type' becomes a column
+df = df.reset_index().rename(columns={'index': 'cell_type'})
+
+# Melt the DataFrame to long format for plotting
+df_melted = df.melt(id_vars='cell_type', var_name='leiden_resolution', value_name='jaccard_value')
+
+# Map resolutions to cluster counts
+df_melted['cluster_count'] = df_melted['leiden_resolution'].map(cluster_counts_drvi)
+
+# Sort by cluster count to keep x-axis in correct order
+df_melted = df_melted.sort_values('cluster_count')
+
+# Set up the seaborn style
+sns.set(style="whitegrid")
+
+# Create the line plot
+plt.figure(figsize=(15, 6))
+sns.lineplot(
+    data=df_melted,
+    x='cluster_count',
+    y='jaccard_value',
+    hue='cell_type',
+    marker='o'
+)
+
+# Customize x-axis to display both resolution and cluster count
+xticks = [cluster_counts_drvi[key] for key in cluster_counts_drvi if key in df.columns]
+xlabels = []
+for key in cluster_counts_drvi:
+    if key in df.columns:
+        res = key.split("_")[1]
+        label = f'resolution = {res}\n({cluster_counts_drvi[key]} clusters)' 
+        xlabels.append(label)
+plt.xticks(ticks=xticks, labels=xlabels, rotation=90)
+
+# Set plot titles and labels
+plt.title('Jaccard index values between rare cell-types and clusters')
+plt.xlabel('Leiden resolution (number of clusters)')
+plt.ylabel('Jaccard index')
+
+# Move the legend to the right
+plt.legend(title='Cell Type', bbox_to_anchor=(1.01, 0.2), loc='upper left')
+
+# Add dashed horizontal lines for fixed Jaccard values
+for cell_type, fixed_value in drvi_threshold_jaccard.items():
+    plt.axhline(
+        y=fixed_value,
+        color=sns.color_palette()[df['cell_type'].tolist().index(cell_type)],  # Match the color with the lines
+        linestyle='--',
+        label=f'{cell_type} (fixed)',
+        alpha=0.8
+    )
+    # Add text next to the line
+    plt.text(
+        x=max(df_melted['cluster_count']) + 10.5,  # Position slightly to the right of the last x tick
+        y=fixed_value,
+        s=f'DRVI - {cell_type}',
+        color=sns.color_palette()[df['cell_type'].tolist().index(cell_type)],  # Match the color with the line
+        va='center'
+    )
+
+plt.tight_layout()
+plt.savefig(output_dir / f'drvi_vs_clustering_of_drvi_rare_jaccard.pdf', bbox_inches='tight', dpi=300)
+plt.show()
+# -
+
+
+# ## All in a single plot
+
+# +
+# Create a DataFrame from the dictionary
+max_x = 200
+cluster_counts = {
+    'DRVI': cluster_counts_drvi,
+    'scVI': cluster_counts_scvi,
+}
+
+df = pd.concat([
+    pd.DataFrame(scvi_jaccard_results).assign(method='scVI'),
+    pd.DataFrame(drvi_jaccard_results).assign(method='DRVI'),
+])
+
+# Reset the index so 'cell_type' becomes a column
+df = df.reset_index().rename(columns={'index': 'cell_type'})
+
+# Melt the DataFrame to long format for plotting
+df_melted = df.melt(id_vars=['cell_type', 'method'], var_name='leiden_resolution', value_name='jaccard_value')
+
+# Map resolutions to cluster counts
+df_melted['cluster_count'] = df_melted.apply(lambda row: cluster_counts[row['method']][row['leiden_resolution']], axis=1)
+
+# Sort by cluster count to keep x-axis in correct order
+df_melted = df_melted.sort_values('cluster_count')
+df_melted.rename(columns={'cell_type': 'Cell type', 'method': 'Method'}, inplace=True)
+df_melted = df_melted.query(f"cluster_count <= {max_x}")
+
+# Set up the seaborn style
+sns.set(style="whitegrid")
+
+
+# Create the line plot
+plt.figure(figsize=(15, 6))
+sns.lineplot(
+    data=df_melted,
+    x='cluster_count',
+    y='jaccard_value',
+    hue='Cell type',
+    style='Method',
+    style_order=['DRVI', 'scVI'],
+    marker='o',
+)
+
+# Customize x-axis to display both resolution and cluster count
+xticks = []
+xlabels = []
+for method_name in ['scVI', 'DRVI']:
+    xticks = xticks + [cluster_counts[method_name][key] for key in cluster_counts[method_name] if (float(key.split("leiden_")[1]) in resolutions_to_plot) and (cluster_counts[method_name][key] <= max_x)]
+    for key in cluster_counts[method_name]:
+        if key.startswith("leiden_") and (float(key.split("leiden_")[1]) in resolutions_to_plot) and (cluster_counts[method_name][key] <= max_x):
+            res = key.split("_")[1]
+            # label = f'{method_name} / resolution = {res} ({cluster_counts[method_name][key]} clusters)' 
+            label = f'' 
+            xlabels.append(label)
+plt.xticks(ticks=xticks, labels=xlabels, rotation=90)
+
+# Set plot titles and labels
+plt.title('Jaccard index values between rare cell-types and clusters')
+plt.xlabel('\n\n\n\n\nNumber of clusters')
+plt.ylabel('Jaccard index')
+# plt.xlim((0, ))
+
+# Move the legend to the right
+plt.legend(title='Cell Type', bbox_to_anchor=(1.01, 0.2), loc='upper left')
+
+# Add dashed horizontal lines for fixed Jaccard values
+for cell_type, fixed_value in drvi_threshold_jaccard.items():
+    plt.axhline(
+        y=fixed_value,
+        color=sns.color_palette()[df['cell_type'].tolist().index(cell_type)],  # Match the color with the lines
+        # linestyle='dotted',
+        linestyle='solid',
+        label=f'{cell_type} (fixed)',
+        alpha=0.8
+    )
+    # Add text next to the line
+    plt.text(
+        x=max_x + 5,  # Position slightly to the right of the last x tick
+        y=fixed_value,
+        s=f'DRVI - {cell_type}',
+        color=sns.color_palette()[df['cell_type'].tolist().index(cell_type)],  # Match the color with the line
+        va='center'
+    )
+
+# Add DRVI number of DRs to consider
+x_drvi_n_entity = np.logical_not(embed_drvi.var['vanished']).sum()
+plt.axvline(
+    x=x_drvi_n_entity,
+    color='k',
+    # linestyle='dashdot',
+    linestyle='solid',
+    alpha=1.0
+)
+plt.text(
+    x=x_drvi_n_entity + 2,
+    y=0.84,
+    s=f'Number of dimensions \nto check in DRVI: {x_drvi_n_entity}',
+    color='k',
+    ha='left',
+    va='top',
+    # rotation=90,
+)
+
+base_y = -0.06
+offset = -0.04
+plt.text(x=-50, y=base_y + 0 * offset, s=f'Number of clusters scVI', color='k', ha='left', va='top',)
+plt.text(x=-50, y=base_y + 1 * offset, s=f'Leiden resolution scVI', color='k', ha='left', va='top',)
+plt.text(x=-50, y=base_y + 3 * offset, s=f'Number of clusters DRVI', color='k', ha='left', va='top',)
+plt.text(x=-50, y=base_y + 4 * offset, s=f'Leiden resolution DRVI', color='k', ha='left', va='top',)
+for method_name in ['scVI', 'DRVI']:
+    for key in cluster_counts[method_name]:
+        if key.startswith("leiden_") and (float(key.split("leiden_")[1]) in resolutions_to_plot) and (cluster_counts[method_name][key] <= max_x):
+            res = key.split("_")[1]
+            _base_y = base_y if method_name == 'scVI' else base_y + 3 * offset
+            _x = cluster_counts[method_name][key]
+            plt.text(x=_x, y=_base_y + 0 * offset, s=f'{_x}', color='k', ha='center', va='top',)
+            plt.text(x=_x, y=_base_y + 1 * offset, s=f'{res}', color='k', ha='center', va='top',)
+        
+plt.gca().yaxis.grid(False)
+plt.tight_layout()
+plt.savefig(output_dir / f'drvi_scvi_vs_clustering_of_drvi_rare_jaccard.pdf', bbox_inches='tight', dpi=300)
+plt.show()
+
+# +
+# Create a DataFrame from the dictionary
+max_x = 200
+cluster_counts = {
+    'DRVI': cluster_counts_drvi,
+    'scVI': cluster_counts_scvi,
+}
+
+df = pd.concat([
+    pd.DataFrame(scvi_jaccard_results).assign(method='scVI'),
+    pd.DataFrame(drvi_jaccard_results).assign(method='DRVI'),
+])
+
+# Reset the index so 'cell_type' becomes a column
+df = df.reset_index().rename(columns={'index': 'cell_type'})
+
+# Melt the DataFrame to long format for plotting
+df_melted = df.melt(id_vars=['cell_type', 'method'], var_name='leiden_resolution', value_name='jaccard_value')
+
+# Map resolutions to cluster counts
+df_melted['cluster_count'] = df_melted.apply(lambda row: cluster_counts[row['method']][row['leiden_resolution']], axis=1)
+
+# Sort by cluster count to keep x-axis in correct order
+df_melted = df_melted.sort_values('cluster_count')
+df_melted.rename(columns={'cell_type': 'Cell type', 'method': 'Method'}, inplace=True)
+df_melted = df_melted.query(f"cluster_count <= {max_x}")
+
+# Set up the seaborn style
+sns.set(style="whitegrid")
+
+df_melted_all = df_melted.copy()
+for ct_name, df_melted in df_melted_all.groupby('Cell type'):
+    # Create the line plot
+    _color = sns.color_palette()[df['cell_type'].tolist().index(ct_name)]
+    plt.figure(figsize=(15, 4))
+    sns.lineplot(
+        data=df_melted,
+        x='cluster_count',
+        y='jaccard_value',
+        color=_color,
+        style='Method',
+        style_order=['DRVI', 'scVI'],
+        # marker='o',
+    )
+    
+    # Customize x-axis to display both resolution and cluster count
+    xticks = []
+    xlabels = []
+    for method_name in ['scVI', 'DRVI']:
+        xticks = xticks + [cluster_counts[method_name][key] for key in cluster_counts[method_name] if (float(key.split("leiden_")[1]) in resolutions_to_plot) and (cluster_counts[method_name][key] <= max_x)]
+        for key in cluster_counts[method_name]:
+            if key.startswith("leiden_") and (float(key.split("leiden_")[1]) in resolutions_to_plot) and (cluster_counts[method_name][key] <= max_x):
+                res = key.split("_")[1]
+                # label = f'{method_name} / resolution = {res} ({cluster_counts[method_name][key]} clusters)' 
+                label = f'' 
+                xlabels.append(label)
+    plt.xticks(ticks=xticks, labels=xlabels, rotation=90)
+    
+    # Set plot titles and labels
+    plt.title('Jaccard index values between rare cell-types and clusters')
+    plt.xlabel('\n\n\nNumber of clusters')
+    plt.ylabel('Jaccard index')
+    # plt.xlim((0, ))
+    
+    # Move the legend to the right
+    plt.legend(title='Method', bbox_to_anchor=(1.01, 0.35), loc='upper left')
+    
+    # Add dashed horizontal lines for fixed Jaccard values
+    cell_type, fixed_value = ct_name, drvi_threshold_jaccard[ct_name]
+    plt.axhline(
+        y=fixed_value,
+        color='k',  # Match the color with the lines
+        # linestyle='dashdot',
+        linestyle='solid',
+        label=f'{cell_type} (fixed)',
+        alpha=0.8
+    )
+    # Add text next to the line
+    plt.text(
+        x=max_x + 5,  # Position slightly to the right of the last x tick
+        y=fixed_value,
+        s=f'DRVI - {cell_type}\n(no clustering)',
+        color='k',
+        va='center'
+    )
+    
+    # Add DRVI number of DRs to consider
+    x_drvi_n_entity = np.logical_not(embed_drvi.var['vanished']).sum()
+    plt.axvline(
+        x=x_drvi_n_entity,
+        color='k',
+        # linestyle='dashdot',
+        linestyle='solid',
+        alpha=1.0
+    )
+    plt.text(
+        x=x_drvi_n_entity + 1,
+        y=(
+            drvi_threshold_jaccard[ct_name] - df_melted['jaccard_value'].max() * 0.05
+            if ct_name != 'AT0' else
+            drvi_threshold_jaccard[ct_name] + df_melted['jaccard_value'].max() * 0.18
+        ),
+        s=f'Number of dimensions to check\nin DRVI (no clustering): {x_drvi_n_entity}',
+        color='k',
+        ha='left',
+        va='top',
+        # rotation=90,
+    )
+    plt.scatter(x_drvi_n_entity, drvi_threshold_jaccard[ct_name], s=180, c='k', marker='*', zorder=10)
+
+    plt.text(
+        x=-0.2,
+        y=0.9,
+        s=f'Identification of\n{cell_type}',
+        color='k',
+        ha='left',
+        transform=plt.gca().transAxes,
+    )
+    base_y = -0.06 * df_melted['jaccard_value'].max()
+    offset = -0.06 * df_melted['jaccard_value'].max()
+    plt.text(x=-50, y=base_y + 0 * offset, s=f'Number of clusters scVI', color='k', ha='left', va='top',)
+    plt.text(x=-50, y=base_y + 1 * offset, s=f'Leiden resolution scVI', color='k', ha='left', va='top',)
+    plt.text(x=-50, y=base_y + 3 * offset, s=f'Number of clusters DRVI', color='k', ha='left', va='top',)
+    plt.text(x=-50, y=base_y + 4 * offset, s=f'Leiden resolution DRVI', color='k', ha='left', va='top',)
+    for method_name in ['scVI', 'DRVI']:
+        for key in cluster_counts[method_name]:
+            if key.startswith("leiden_") and (float(key.split("leiden_")[1]) in resolutions_to_plot) and (cluster_counts[method_name][key] <= max_x):
+                res = key.split("_")[1]
+                _base_y = base_y if method_name == 'scVI' else base_y + 3 * offset
+                _x = cluster_counts[method_name][key]
+                plt.text(x=_x, y=_base_y + 0 * offset, s=f'{_x}', color='k', ha='center', va='top',)
+                plt.text(x=_x, y=_base_y + 1 * offset, s=f'{res}', color='k', ha='center', va='top',)
+            
+    plt.gca().yaxis.grid(False)
+    plt.tight_layout()
+    plt.savefig(output_dir / f'drvi_scvi_vs_clustering_of_drvi_rare_jaccard_{ct_name}.pdf', bbox_inches='tight', dpi=300)
+    plt.show()
+# -
+
+
+
 # # Integration quality assessment
 
 # ## Add scANVI to the scIB metrics
@@ -669,7 +1155,7 @@ bench.plot_results_table(min_max_scale=False, show=True)
 # +
 methods_to_plot = [
     "X_scanvi_emb", "DRVI", "DRVI-IK", "scVI", 
-    "TCVAE-opt", "MICHIGAN-opt", "PCA", "ICA", "MOFA"
+    "TCVAE-opt", "MICHIGAN-opt", "PCA", "ICA", "MOFA", "LIGER", "scETM",
 ]
 
 results = {}

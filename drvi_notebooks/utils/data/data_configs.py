@@ -269,6 +269,16 @@ info_mapping = {
         'exp_plot_pp': atac_nips21_exp_plot_pp,
         'data_path': os.path.expanduser('~/data/nips_21_multiome/atac_modality_hvg.h5ad'),
     },
+    'synthetic_data_ABSTRACT': {
+        'plot_cols': {
+            'pert': 'Perturbation',
+        },
+        'cell_type': 'pert',
+        'embed_pp': nothing,
+        'exp_plot_pp': None,
+        'data_path': os.path.expanduser('~/data/drvi/synthetic_data_ABSTRACT.h5ad'),
+        'ground_truth_one_hot': 'ground_truth_identity',
+    },
 }
 info_mapping['pancreas_scvelo_concat'] = {
     **copy.deepcopy(info_mapping['pancreas_scvelo']),
@@ -278,7 +288,7 @@ info_mapping['pancreas_scvelo_concat'] = {
 info_mapping['pancreas_scvelo_all'] = {
     **copy.deepcopy(info_mapping['pancreas_scvelo']),
     'data_name': None,
-    'data_path': os.path.expanduser('~/data/developmental/pancreas_scvelo_all.h5ad'),
+    'data_path': os.path.expanduser('~/data/developmental/pancreas_scvelo_with_cr_info_all.h5ad'),
 }
 info_mapping['pancreas_scvelo_all_concat'] = {
     **copy.deepcopy(info_mapping['pancreas_scvelo']),
@@ -309,7 +319,22 @@ info_mapping['sciplex3_all'] = {
     **copy.deepcopy(info_mapping['sciplex3_hvg']),
     'data_path': os.path.expanduser('~/data/pertpy/sciplex3_all.h5ad'),
 }
-
+info_mapping['synthetic_data_unique_no_noise'] = {
+    **copy.deepcopy(info_mapping['synthetic_data_ABSTRACT']),
+    'data_path': os.path.expanduser('~/data/drvi/synthetic_data_unique_no_noise.h5ad'),
+}
+info_mapping['synthetic_data_unique'] = {
+    **copy.deepcopy(info_mapping['synthetic_data_ABSTRACT']),
+    'data_path': os.path.expanduser('~/data/drvi/synthetic_data_unique.h5ad'),
+}
+info_mapping['synthetic_data_overlapping_4_no_noise'] = {
+    **copy.deepcopy(info_mapping['synthetic_data_ABSTRACT']),
+    'data_path': os.path.expanduser('~/data/drvi/synthetic_data_overlapping_4_no_noise.h5ad'),
+}
+info_mapping['synthetic_data_overlapping_4'] = {
+    **copy.deepcopy(info_mapping['synthetic_data_ABSTRACT']),
+    'data_path': os.path.expanduser('~/data/drvi/synthetic_data_overlapping_4.h5ad'),
+}
 
 def get_data_info(run_name, version_str):
     data_id = run_name.split("-")[0]
@@ -324,6 +349,7 @@ def get_data_info(run_name, version_str):
     exp_plot_pp = info_mapping[data_id].get('exp_plot_pp', None)
     control_treatment_key = info_mapping[data_id].get('control_treatment_key', None)
     split_key = info_mapping[data_id].get('split_key', None)
+    ground_truth_one_hot_key = info_mapping[data_id].get('ground_truth_one_hot', None)
     if info_mapping[data_id].get('data_name') is not None:
         data_name = info_mapping[data_id]['data_name']
     elif data_path.endswith(".h5ad"):
@@ -347,4 +373,5 @@ def get_data_info(run_name, version_str):
         'exp_plot_pp': exp_plot_pp,
         'control_treatment_key': control_treatment_key,
         'split_key': split_key,
+        'ground_truth_one_hot_key': ground_truth_one_hot_key,
     }

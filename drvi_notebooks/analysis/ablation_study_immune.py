@@ -8,9 +8,9 @@
 #       format_version: '1.5'
 #       jupytext_version: 1.15.2
 #   kernelspec:
-#     display_name: drvi-repr
+#     display_name: drvi
 #     language: python
-#     name: drvi-repr
+#     name: drvi
 # ---
 
 # # Imports
@@ -296,29 +296,14 @@ plt.show()
 ######################################
 # Please run disentanglemnt notebook #
 ######################################
-
-# +
-metric_abbr = {
-    'Absolute Spearman Correlation': 'ASC',
-    'Mutual Info Score': 'SMI',
-    'NN Alignment': 'SPN',
-}
-disentanglement_results = []
-for metric_aggregation_type in ['LMS', 'MSAS', 'MSGS']:
-    results_df = pd.read_csv(proj_dir / 'results' / f'eval_disentanglement_immune_hvg_ablation_{metric_aggregation_type}.csv')
-    results_df['aggregation_type'] = metric_aggregation_type
-    results_df['metric_short_name'] = metric_aggregation_type + "-" + results_df['metric'].map(metric_abbr).astype(str)
-    disentanglement_results.append(results_df)
-
-disentanglement_results = pd.concat(disentanglement_results)
-disentanglement_results
 # -
 
+disentanglement_results_df = pd.read_csv(proj_dir / 'results' / f'eval_disentanglement_immune_hvg_ablation_all.csv', index_col=0)
+disentanglement_results_df.columns = disentanglement_results_df.columns.str.replace('SMI-disc', 'SMI')
+disentanglement_results_df
 
-
-df = disentanglement_results.set_index('metric_short_name')
-df = df.loc[:, df.columns.str.contains('Dimensional')].T
-df['n_latent'] = df.index.str.split(" ").str[0].astype(int)
+df = disentanglement_results_df.copy()
+df['n_latent'] = df['Method'].str.split(" ").str[0].astype(int)
 df
 for metric in df.columns:
     if "-" not in metric:
@@ -334,7 +319,7 @@ for metric in df.columns:
 
 # # Integrattion quality comparison
 
-methods_to_consider = ["DRVI", "DRVI-AP", "scVI", "PCA", "ICA", "MICHIGAN", "B-TCVAE", "MOFA"]
+methods_to_consider = ["DRVI", "DRVI-AP", "scVI", "PCA", "ICA", "MICHIGAN", "B-TCVAE", "MOFA", "LIGER", "scETM"]
 
 scib_results_address = proj_dir / 'results' / f'scib_results_immune_hvg_ablation.csv'
 scib_df = pd.read_csv(scib_results_address, index_col=0).reset_index(names='method')
