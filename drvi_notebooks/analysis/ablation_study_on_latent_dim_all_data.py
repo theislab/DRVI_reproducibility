@@ -121,6 +121,8 @@ for run_name in [
     RUNS_TO_LOAD = run_info.run_dirs
     scatter_point_size = run_info.scatter_point_size
     adata_to_transfer_obs = run_info.adata_to_transfer_obs
+    if adata_to_transfer_obs is not None:
+        adata_to_transfer_obs = sc.read(adata_to_transfer_obs)
     
     for k,v in RUNS_TO_LOAD.items():
         if not os.path.exists(v):
@@ -323,39 +325,34 @@ plt.show()
 ######################################
 
 # +
-metric_abbr = {
-    'Absolute Spearman Correlation': 'ASC',
-    'Mutual Info Score': 'SMI',
-    'NN Alignment': 'SPN',
-}
+disentanglement_results = []
+for run_name in all_embeds.keys():
+    try:
+        df_ = pd.read_csv(proj_dir / 'results' / f'eval_disentanglement_{run_name}_ablation_all.csv', index_col=0)
+        df_.columns = df_.columns.str.replace('SMI-disc', 'SMI')
+        df_['dataset'] = run_name
+        disentanglement_results.append(df_)
+    except:
+        continue
+    
+disentanglement_results_df = pd.concat(disentanglement_results)
+disentanglement_results_df['n_latent'] = disentanglement_results_df['Method'].str.split(" ").str[0].astype(int)
+disentanglement_results_df = disentanglement_results_df.query("512 >= n_latent >= 32")
+disentanglement_results_df
 
+# +
 disentanglement_results = {}
-for metric_aggregation_type in ['LMS', 'MSAS', 'MSGS']:
-    for metric_name in metric_abbr.values():
-        disentanglement_results[f"{metric_aggregation_type}-{metric_name}"] = pd.DataFrame({
-            'n_latent': [int(x.split(" ")[0]) for x in embed_names_list],
-            **{
-                f'{run_name}': np.zeros(len(embed_names_list))
-                for run_name, embeds in all_embeds.items()
-            }}
-        ).set_index('n_latent')
-
-for metric_aggregation_type in ['LMS', 'MSAS', 'MSGS']:
-    for run_name in all_embeds.keys():
-        try:
-            results_df = pd.read_csv(proj_dir / 'results' / f'eval_disentanglement_{run_name}_ablation_{metric_aggregation_type}.csv')
-        except:
-            continue
-        results_df['metric'] = results_df['metric'].map(metric_abbr)
-        results_df = results_df.set_index('metric').T
-        results_df.index = results_df.index.str.split(" ").str[0].astype(int)
-
-        for metric_name in results_df.columns:
-            disentanglement_results[f"{metric_aggregation_type}-{metric_name}"][run_name] = results_df[metric_name]
+for metric_comb in disentanglement_results_df.columns:
+    if '-' not in metric_comb:
+        continue
+    df_ = disentanglement_results_df[['n_latent', metric_comb, 'dataset']]
+    df_ = df_.pivot(index='n_latent', columns='dataset', values=metric_comb)
+    disentanglement_results[metric_comb] = df_
 
 disentanglement_results[f"LMS-SMI"]
 # -
-for metric_comb in disentanglement_results.keys():
+for metric_comb in disentanglement_results:
+    print(metric_comb)
     plot_df = disentanglement_results[metric_comb].copy()
     plt = plot_the_metric(plot_df.reset_index(), f"{metric_comb}", palette=palette)
     # plot_df = plot_df / (plot_df.iloc[0] + 1e-10)

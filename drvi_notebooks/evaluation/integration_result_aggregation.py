@@ -139,8 +139,12 @@ method_order=[
     'PCA', 
     'ICA', 
     'MOFA',
+    'LIGER',
+    'scETM',
+    # 'DRVI-elu-1',
 ]
-method_palette = dict(zip(method_order, cat_10_pallete))
+# method_palette = dict(zip(method_order, cat_10_pallete))
+method_palette = dict(zip(method_order, cat_20_pallete))
 
 
 
@@ -252,6 +256,12 @@ table = Table(
 )
 fig.savefig(proj_dir / 'plots' / f'eval_integration_scib_summary.pdf', facecolor=ax.get_facecolor(), dpi=300)
 plt.show()
+
+
+
+
+
+
 
 
 

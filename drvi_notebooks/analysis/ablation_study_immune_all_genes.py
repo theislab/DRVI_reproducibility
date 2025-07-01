@@ -8,9 +8,9 @@
 #       format_version: '1.5'
 #       jupytext_version: 1.15.2
 #   kernelspec:
-#     display_name: drvi-repr
+#     display_name: drvi
 #     language: python
-#     name: drvi-repr
+#     name: drvi
 # ---
 
 # # Imports
@@ -294,40 +294,25 @@ plt.show()
 ######################################
 # Please run disentanglemnt notebook #
 ######################################
-
-# +
-metric_abbr = {
-    'Absolute Spearman Correlation': 'ASC',
-    'Mutual Info Score': 'SMI',
-    'NN Alignment': 'SPN',
-}
-disentanglement_results = []
-for metric_aggregation_type in ['LMS', 'MSAS', 'MSGS']:
-    results_df = pd.read_csv(proj_dir / 'results' / f'eval_disentanglement_immune_all_hbw_ablation_{metric_aggregation_type}.csv')
-    results_df['aggregation_type'] = metric_aggregation_type
-    results_df['metric_short_name'] = metric_aggregation_type + "-" + results_df['metric'].map(metric_abbr).astype(str)
-    disentanglement_results.append(results_df)
-
-disentanglement_results = pd.concat(disentanglement_results)
-disentanglement_results
 # -
 
+disentanglement_results_df = pd.read_csv(proj_dir / 'results' / f'eval_disentanglement_immune_all_hbw_ablation_all.csv', index_col=0)
+disentanglement_results_df.columns = disentanglement_results_df.columns.str.replace('SMI-disc', 'SMI')
+disentanglement_results_df
 
-
-df = disentanglement_results.set_index('metric_short_name')
-df = df.loc[:, df.columns.str.contains('Dimensional')].T
-df['n_latent'] = df.index.str.split(" ").str[0].astype(int)
+df = disentanglement_results_df.copy()
+df['n_latent'] = df['Method'].str.split(" ").str[0].astype(int)
 df
 for metric in df.columns:
     if "-" not in metric:
         continue
-    df_ = df.copy()
-    df_[metric] = df_[metric].astype(float)
-    plt = plot_based_on_n_latent(df_, metric, metric)
-    plt.savefig(proj_dir / 'plots' / 'immune_ablation_all_genes' / f'{metric}_vs_n_latent.pdf', bbox_inches='tight')
+
+    plt = plot_based_on_n_latent(df.copy(), metric, metric)
+    plt.savefig(proj_dir / 'plots' / 'immune_ablation' / f'{metric}_vs_n_latent.pdf', bbox_inches='tight')
     plt.show()
 
-df_
+
+
 
 # # Integrattion quality comparison
 

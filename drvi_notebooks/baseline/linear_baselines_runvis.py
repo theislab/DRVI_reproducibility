@@ -41,6 +41,8 @@ from scipy import sparse
 from drvi_notebooks.utils.misc import compare_objs_recursive, check_wandb_run, get_wandb_run
 # -
 
+
+
 sc.settings.set_figure_params(dpi=300)
 sc.settings.set_figure_params(figsize=(5, 5))
 
@@ -68,6 +70,7 @@ parser.add_argument('--model', nargs='+', type=str, default=['pca', 'ica'])
 parser.add_argument('--lognorm-layer', nargs='+', type=str, default='lognorm')
 parser.add_argument('--count-layer', nargs='+', type=str, default='counts')
 parser.add_argument('--batch', '--condition-key', nargs='+', type=str, default='batch')
+parser.add_argument('--n-epochs', nargs='+', type=int, default=100)
 
 # Test data
 parser.add_argument('--train-col', nargs='+', type=str, default=["ALL"])
@@ -77,7 +80,9 @@ parser.add_argument('--n-latent', nargs='+', type=int, default=[32])
 
 # +
 if hasattr(sys, 'ps1'):
-    args = parser.parse_args("--model pca ica mofa --n-latent 32".split(" "))
+    # args = parser.parse_args("--model pca ica mofa --n-latent 32".split(" "))
+    args = parser.parse_args("--model liger scetm --n-latent 32".split(" "))
+    args = parser.parse_args('-i /home/icb/amirali.moinfar/data/HLCA/hlca_core_hvg.h5ad --lognorm-layer X --count-layer counts --batch sample --ct ann_finest_level --plot-keys dataset,ann_finest_level --model liger --n-latent 64 --n-epochs 4'.split(" "))
 else:
     args = parser.parse_args()
 print(args)
@@ -101,6 +106,14 @@ df[:3]
 df['count_layer'][df['model'] == 'pca'] = 'DOES_NOT_MATTER'
 df['count_layer'][df['model'] == 'ica'] = 'DOES_NOT_MATTER'
 df['count_layer'][df['model'] == 'mofa'] = 'DOES_NOT_MATTER'
+
+df['n_epochs'][df['model'] == 'pca'] = None
+df['n_epochs'][df['model'] == 'ica'] = None
+df['n_epochs'][df['model'] == 'mofa'] = None
+df['n_epochs'][df['model'] == 'liger'] = None
+
+df['lognorm_layer'][df['model'] == 'liger'] = 'DOES_NOT_MATTER'
+df['lognorm_layer'][df['model'] == 'scetm'] = 'DOES_NOT_MATTER'
 
 df['batch'][df['model'] == 'pca'] = 'DOES_NOT_MATTER'
 df['batch'][df['model'] == 'ica'] = 'DOES_NOT_MATTER'
@@ -144,6 +157,9 @@ from sklearn.decomposition import FastICA
 
 from mofapy2.run.entry_point import mofa
 import h5py
+
+import pyliger
+from scETM import scETM, UnsupervisedTrainer, evaluate
 # -
 
 
@@ -232,7 +248,6 @@ for index, row in df_shuffled.iterrows():
                                      ('ica', FastICA(n_components=row.n_latent, random_state=SEED, whiten='unit-variance', whiten_solver='eigh'))])
                 pipeline.fit(X_train)
                 latent = pipeline.transform(X)
-
             elif row.model == 'mofa':
                 use_gpu = adata.n_obs < 30_000
                 layer = None if row.lognorm_layer == 'X' else row.lognorm_layer
@@ -251,11 +266,97 @@ for index, row in df_shuffled.iterrows():
                     quiet=False,
                 )
                 latent = adata.obsm['X_mofa']
+            elif row.model == 'liger':
+                if row.batch != "":
+                    adata_list = []
+                    for batch_name, batch_obs in adata.obs.groupby(row.batch):
+                        adata_list.append(ad.AnnData(
+                            adata[batch_obs.index].X if row.count_layer == 'X' else adata[batch_obs.index].layers['counts'],
+                            obs=batch_obs,
+                            var=adata.var,
+                            uns={
+                                "sample_name": batch_name,
+                                # Hack to make sure each method uses the same genes (https://scib-metrics.readthedocs.io/en/stable/notebooks/lung_example.html)
+                                "var_gene_idx": np.arange(adata.n_vars),
+                            },
+                        ))
+                    adata_list = list(sorted(adata_list, key=lambda x: x.n_obs))
+                    # Make sure all datasets have at least n_latent samples.
+                    while adata_list[0].n_obs < row.n_latent:
+                        adata_1, adata_2 = adata_list[:2]
+                    
+                        # Combine smaller datasets
+                        adata_combined = ad.concat([adata_1, adata_2], merge='unique')
+                        adata_combined.uns["sample_name"] = adata_2.uns["sample_name"]
+                        adata_combined.uns["var_gene_idx"] = np.arange(adata.n_vars)
+                        
+                        adata_list = [adata_combined] + adata_list[2:]
+                else:
+                    adata_list = [adata.copy()]
+                    adata_list[0].uns["sample_name"] = "dummy"
+                    adata_list[0].uns["var_gene_idx"] = np.arange(adata.n_vars)
+
+                for subset_adata in adata_list:
+                    subset_adata.obs.index.name = 'cells'
+                    subset_adata.var.index.name = 'genes'
+
+                liger_obj = pyliger.create_liger(adata_list, remove_missing=False, make_sparse=True)
+                # Same hack to make sure each method uses the same genes (https://scib-metrics.readthedocs.io/en/stable/notebooks/lung_example.html)
+                liger_obj.var_genes = adata.var_names
+                pyliger.normalize(liger_obj, remove_missing=False)
+                # Same hack to make sure each method uses the same genes (https://scib-metrics.readthedocs.io/en/stable/notebooks/lung_example.html)
+                # pyliger.select_genes(liger_obj)
+                pyliger.scale_not_center(liger_obj)
+                pyliger.optimize_ALS(liger_obj, k=row.n_latent)
+                pyliger.quantile_norm(liger_obj)
+
+                latent_adata = ad.AnnData(
+                    np.concatenate([subset_adata.obsm['H_norm'] for subset_adata in liger_obj.adata_list]),
+                    obs=pd.concat([subset_adata.obs for subset_adata in liger_obj.adata_list]),
+                )
+                latent_adata.layers['H'] = np.concatenate([subset_adata.obsm['H'] for subset_adata in liger_obj.adata_list])
+                latent_adata.obsm['qz_mean'] = latent_adata.X
+                latent_adata = latent_adata[adata.obs.index].copy()
+            elif row.model == 'scetm':
+                # requires count data
+                adata_train = adata.copy()
+                if row.count_layer != 'X':
+                    adata_train.X = adata_train.layers[row.count_layer].copy()
+
+                if row.batch != "":
+                    n_batches = adata_train.obs[row.batch].nunique()
+                    batch_key = row.batch
+                else:
+                    n_batches = 0
+                    batch_key = "dummy"
+                    adata.obs[batch_key] = "X"
+                model = scETM(
+                    n_trainable_genes=adata_train.n_vars,
+                    n_batches=n_batches,
+                    n_topics=row.n_latent,
+                )
+                trainer = UnsupervisedTrainer(model, adata_train)
+                trainer.train(n_epochs=row.n_epochs, batch_col=batch_key, eval=False, save_model_ckpt=False)
+                model.get_cell_embeddings_and_nll(adata_train, batch_col=batch_key)
+
+                _theta = adata_train.obsm['theta']
+                _delta = adata_train.obsm['delta']
+                if sparse.issparse(_theta):
+                    _theta = _theta.A
+                if sparse.issparse(_delta):
+                    _delta = _delta.A
+                
+                latent_adata = ad.AnnData(_theta, obs=adata_train.obs)
+                latent_adata.obsm['qz_mean'] = latent_adata.X
+                latent_adata.obsm['delta'] = _delta
+            else:
+                raise NotImplementedError(f"Model: {row.model}")
                 
             ########################################
-            
-            latent_adata = ad.AnnData(latent, obs=adata.obs)
-            latent_adata.obsm['qz_mean'] = latent
+
+            if row.model not in ['liger', 'scetm']:  # Already anndata
+                latent_adata = ad.AnnData(latent, obs=adata.obs)
+                latent_adata.obsm['qz_mean'] = latent
 
             rsc.get.anndata_to_GPU(latent_adata)
             rsc.pp.neighbors(latent_adata, use_rep="qz_mean", n_neighbors=10, n_pcs=latent_adata.obsm["qz_mean"].shape[1])
@@ -286,16 +387,12 @@ for index, row in df_shuffled.iterrows():
         wandb.finish()
     except Exception as e:
         print(e)
-        wandb.finish()
+        wandb.finish(exit_code=1)
+        raise e
 # -
 
 
 wandb.finish()
-
-
-
-
-
 
 
 

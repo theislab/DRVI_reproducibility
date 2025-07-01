@@ -80,6 +80,8 @@ if run_name == 'zebrafish_hvg_128':
     real_run_name = 'zebrafish_hvg'
 if run_name.endswith("_ablation"):
     real_run_name = run_name[:-len("_ablation")]
+if run_name.endswith("_drs"):
+    real_run_name = run_name[:-len("_drs")]
 if run_name in ['immune_all_hbw_ablation']:
     real_run_name = 'immune_all'
 run_version = '4.3'
@@ -109,7 +111,7 @@ wong_pallete = [
 ]
 cat_100_pallete = sc.plotting.palettes.godsnot_102
 
-methods_to_plot = ["DRVI", "DRVI-IK", "scVI", "TCVAE-opt", "MICHIGAN-opt", "PCA", "ICA", "MOFA"]
+methods_to_plot = ["DRVI", "DRVI-IK", "scVI", "TCVAE-opt", "MICHIGAN-opt", "PCA", "ICA", "MOFA", "LIGER", "scETM"]
 
 
 
@@ -190,7 +192,7 @@ if condition_key is not None:
     bench._results = pd.concat([result_df.iloc[:, 0].fillna(0.) for method_name, result_df in results.items()] + [any_result[['Metric Type']]], axis=1, verify_integrity=True)
     bench.plot_results_table(min_max_scale=False, show=True, 
                              save_dir=proj_dir / 'plots')
-    shutil.move(proj_dir / 'plots' / 'scib_results.svg', proj_dir / 'plots' / f'eval_disentanglement_{run_name}_scib.svg')
+    shutil.move(proj_dir / 'plots' / 'scib_results.svg', proj_dir / 'plots' / f'eval_integration_{run_name}_scib.svg')
 # -
 results_df = bench._results.T.copy()
 metric_type = results_df.loc['Metric Type']
