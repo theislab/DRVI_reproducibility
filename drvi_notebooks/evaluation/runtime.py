@@ -92,7 +92,6 @@ for run_config, run_key in RUN_KEYS.items():
     
 runs_df = pd.json_normalize(result_list, sep='_')
 runs_df = runs_df.query('(summary_epoch == config_params_max_epochs - 1)')
-runs_df = runs_df.query('(summary_epoch == config_params_max_epochs - 1)')
 
 print("Number of runs:", len(runs_df))
 runs_df[:3]
@@ -135,7 +134,7 @@ runs_df["n_genes"] = runs_df["config_params_input_adata"].apply(lambda path: dat
 runs_df["runtime_per_sample"] = 1000 * runs_df["summary_train_runtime"] / runs_df["n_cells"] / runs_df["config_params_max_epochs"]
 runs_df["runtime_paper"] = runs_df["summary_train_runtime"] / 100 * runs_df["paper_epochs"]
 runs_df["model_plot"] = runs_df["config_params_model"].map({'drvi': 'DRVI', 'scvi': 'scVI family baseline', 'peakvi': 'scVI family baseline'})
-runs_df["dataset_plot"] = runs_df["dataset"] + "\n#samples: " + np.round(runs_df["n_cells"] / 1000).astype("int").astype(str) + "k\n#features: " + runs_df["n_genes"].astype("str")
+runs_df["dataset_plot"] = runs_df["dataset"] + "\n#cells: " + np.round(runs_df["n_cells"] / 1000).astype("int").astype(str) + "k\n#features: " + runs_df["n_genes"].astype("str")
 
 runs_df[[
     "run_config", "summary_train_runtime", "dataset", "n_cells", "n_genes",
@@ -178,8 +177,8 @@ for run_config in ["H100", "A100", "V100"]:
     
     # Customize the plot
     plt.xlabel('Dataset', fontsize=12)
-    plt.ylabel('Epoch runtime per sample (milliseconds)', fontsize=12)
-    plt.title(f'Runtime of DRVI versus scVI or peakVI ({run_config} GPU)', fontsize=14)
+    plt.ylabel('Epoch runtime per cell (milliseconds)', fontsize=12)
+    plt.title(f'Runtime of DRVI versus scVI or peakVI (GPU)', fontsize=14)
     plt.xticks(fontsize=10, rotation=90, ha='center')
     plt.yticks(fontsize=10)
     plt.legend(title='Model', fontsize=10)
@@ -337,7 +336,7 @@ for run_config in ["H100", "A100", "V100"]:
     # Customize the plot
     plt.xlabel('Dataset', fontsize=12)
     plt.ylabel('Maximum allocated GPU memory (Gigabytes)', fontsize=12)
-    plt.title(f'GPU memory requirements for DRVI versus scVI or peakVI ({run_config} GPU)', fontsize=14)
+    plt.title(f'GPU memory requirements for DRVI versus scVI or peakVI', fontsize=14)
     plt.xticks(fontsize=10, rotation=90, ha='center')
     plt.yticks(fontsize=10)
     plt.legend(title='Model', fontsize=10)
@@ -348,6 +347,12 @@ for run_config in ["H100", "A100", "V100"]:
     plt.tight_layout()
     plt.savefig(output_dir / f"gpu_memory_barplot_{run_config}.pdf", bbox_inches='tight')
     plt.show()
+
+
+
+
+
+
 
 
 

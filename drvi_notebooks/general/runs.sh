@@ -179,3 +179,19 @@ python drvi_runvis.py --seed $RANDOM --wb-prefix $WB_PREFIX -e 400 -i "/home/icb
 python drvi_runvis.py --seed $RANDOM --wb-prefix $WB_PREFIX -e 400 -i "/home/icb/amirali.moinfar/data/zebrafish/zebrafish_processed_v1_hvg_2000.h5ad" --lognorm-layer X --count-layer counts --batch "" --ct "tissue.name" --plot-keys "tissue.name,stage.group" --model drvi --encoder-dims 256,256 --decoder-dims 256,256 --n-latent 64 --n-split-latent MAX --split-aggregation sum --split-method split --cov-model one_hot --gene-likelihood nb_softplus --decoder-reuse-weights last --batch-norm none --layer-norm both  --activation-fn elu --encoder-dropout 0.1
 
 
+# ############################## V 4.7 - KL effect ##############################
+
+export WB_PREFIX=kl_effect_
+
+
+### Immune
+python drvi_runvis.py --seed $RANDOM --wb-prefix $WB_PREFIX -e 400 -i "/home/icb/amirali.moinfar/data/prepared/immune_all_human/adata_hvg.h5ad" --batch "batch@5" --ct final_annotation --plot-keys batch,final_annotation --model drvi --encoder-dims 128,128 --decoder-dims 128,128 --n-latent 32 --n-split-latent 1 MAX --split-aggregation logsumexp --split-method split_map --inject-covariates 0 --encode-covariates 0 --decoder-reuse-weights everywhere --cov-model one_hot --gene-likelihood pnb_softmax --batch-norm none --layer-norm both --activation-fn elu --encoder-dropout 0.1 --target-kl 0.01 0.02 0.05 0.1 0.2 0.5 1. 2. 5. 10.
+
+for i in {1..10}; do
+  srun -p gpu_p --qos=gpu_normal  -c 2 -t 5:00:00  --mem=50G --export=ALL /home/icb/amirali.moinfar/miniconda3/envs/drvi/bin/python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $i --wb-prefix kl_effect_ -e 400 -i "/home/icb/amirali.moinfar/data/prepared/immune_all_human/adata_hvg.h5ad" --batch "batch@5" --ct final_annotation --plot-keys batch,final_annotation --model drvi --encoder-dims 128,128 --decoder-dims 128,128 --n-latent 32 --n-split-latent 1 MAX --split-aggregation logsumexp --split-method split_map --inject-covariates 0 --encode-covariates 0 --decoder-reuse-weights everywhere --cov-model one_hot --gene-likelihood pnb_softmax --batch-norm none --layer-norm both --activation-fn elu --encoder-dropout 0.1 --target-kl 0.01 0.02 0.05 0.1 0.2 0.5 1. 2. 5. 10.  &
+done
+
+for i in {1..10}; do
+  srun -p gpu_p --qos=gpu_normal --gres=gpu:1 -c 2 -t 12:00:00  --mem=50G --export=ALL /home/icb/amirali.moinfar/miniconda3/envs/drvi/bin/python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $i --wb-prefix kl_effect_ -e 400 -i "/home/icb/amirali.moinfar/data/HLCA/hlca_core_hvg.h5ad" --lognorm-layer X --count-layer counts --batch sample@20 --ct ann_finest_level --plot-keys dataset,ann_finest_level --model drvi --encoder-dims 256,256 --n-latent 64 --n-split-latent 1 MAX --split-aggregation logsumexp --split-method split_map --inject-covariates 0 --encode-covariates 0 --decoder-reuse-weights everywhere --cov-model one_hot --gene-likelihood pnb_softmax --batch-norm none --layer-norm both --activation-fn elu --encoder-dropout 0.1 --target-kl 0.01 0.02 0.05 0.1 0.2 0.5 1. 2. 5. 10.  &
+done
+

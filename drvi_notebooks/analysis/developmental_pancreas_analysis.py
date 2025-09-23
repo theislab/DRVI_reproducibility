@@ -237,7 +237,7 @@ unique_values = list(sorted(list(embed.obs[col].astype(str).unique())))
 palette = dict(zip(unique_values, cat_20_pallete))
 fig = sc.pl.umap(embed, color=col, palette=palette, show=False, frameon=False, title='', 
                    legend_loc='right margin')
-plt.legend(ncol=(len(unique_values) + 2) // 1, bbox_to_anchor=(1.1, 1.05))
+plt.legend(ncol=(len(unique_values) + 2) // 3, bbox_to_anchor=(1.1, 1.05))
 dir_name = output_dir
 dir_name.mkdir(parents=True, exist_ok=True)
 plt.savefig(dir_name / f'umaps_{col}_legend.pdf', bbox_inches='tight', dpi=300)
@@ -375,8 +375,6 @@ for dims, genes, title in relevant_dims:
 
 # # Identify cell-cycle dimensions
 
-set_font_in_rc_params()
-
 corr_scores = defaultdict(dict)
 mi_scores = defaultdict(dict)
 
@@ -400,8 +398,50 @@ for method_name, embed in embeds.items():
                 mi_scores[method_name][col] = mi_score
             print(f"{col} Max MI score: ", mi_scores[method_name][col].max())
 
+# +
+mi_s_scores = {k: mi_scores[k]['S_score'].max() for k in embeds}
+mi_g2m_scores = {k: mi_scores[k]['G2M_score'].max() for k in embeds}
+
+for idx, (plot_data, title, y_label) in enumerate([
+    (mi_s_scores, 'max(MI) with S Score', 'Mutual Information'),
+    (mi_g2m_scores, 'max(MI) with G2M Score', 'Mutual Information'),
+]):
+    plot_data = {pretify_method_name(k): v for k, v in plot_data.items()}
+    plot_series = pd.Series(plot_data).sort_values(ascending=False)
+
+    plt.figure(figsize=(3, 3.5))
+    ax = plot_series.plot(kind='bar', color='lightcoral')
+    ax.grid(False)
+    plt.title(f"{title}", fontsize=12)
+    plt.xlabel('', fontsize=12)
+    plt.ylabel(f"{y_label}", fontsize=14)
+    plt.xticks(rotation=90)
+
+    # Change min y-axis for the first plot only
+    plt.ylim(0., 0.8) # Assuming max score is 1.0, set upper limit as well
+
+    # Add score labels on top of each bar
+    for p in ax.patches:
+        ax.annotate(f"  {p.get_height():.2f}",
+                    (p.get_x() + p.get_width() / 2., p.get_height()),
+                    ha='center', va='center',
+                    xytext=(0, 10),
+                    textcoords='offset points',
+                    fontsize=12,
+                    rotation=90) # Rotate the text by 90 degrees
+
+    plt.tight_layout()
+    plt.savefig(output_dir / f'cell_cycle_overall_plot_{idx+1}_updated.pdf')
+    plt.savefig(output_dir / f'cell_cycle_overall_plot_{idx+1}_updated.png')
+    plt.show()
+# -
+
+plt.rcParams.update(original_params)
+
 # calculate DRVI improvements
 0.5235233091168858 / 0.3534779256318572, 0.47495746282584506 / 0.45862906327157127
+
+set_font_in_rc_params()
 
 # +
 num_methods = len(embeds)

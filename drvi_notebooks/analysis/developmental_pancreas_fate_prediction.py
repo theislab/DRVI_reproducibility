@@ -260,6 +260,7 @@ fig, axs = plt.subplots(len(embeds), 5,
                         figsize=(5 * size, len(embeds) * size),
                         sharex=False, sharey=False, squeeze=False)
 tsi_results = {}
+auto_terminal_states_results = {}
 
 for i, method_name in list(enumerate(methods_to_consider)):
     print(method_name)
@@ -312,13 +313,18 @@ for i, method_name in list(enumerate(methods_to_consider)):
     g.plot_macrostates(which="all", discrete=False, legend_loc="none", show=False, ax=axs[i, 1])
 
     tsi_score = g.tsi(n_macrostates=10, terminal_states=['Alpha', 'Beta', 'Delta', 'Epsilon'], cluster_key='clusters')
-    tsi_results[method_name] = g._tsi.to_df()
+    tsi_results[method_name] = {'score': tsi_score, 'df': g._tsi.to_df()}
     plot_tsi_on_ax(g._tsi.to_df(), ax=axs[i, 3], method_name=method_name, line_color=method_palette[method_name], total_score=tsi_score)
 
     g.predict_terminal_states(method="eigengap")
     g.plot_macrostates(which="terminal", discrete=True, legend_loc="none", s=100, show=False, ax=axs[i, 4])
     # g.plot_macrostates(which="terminal", discrete=False, legend_loc="on data")
 
+    auto_terminal_states_results[method_name] = {
+        'terminal_states': g.terminal_states,
+        'terminal_states_memberships': g.terminal_states_memberships,
+        'terminal_states_probabilities': g.terminal_states_probabilities,
+    }
 
     axs[i, 0].set_ylabel(pretify_method_name(method_name))
     
@@ -342,36 +348,63 @@ vk.plot_projection(legend_loc="right margin", save=str(output_dir / f'cr_fate_ma
 
 
 
-
-
-
-
-
-
-
-
+# ## Plotting as metrics
 
 # +
-# # No algorithm benefits for any method from adding ConnectivityKernel -> Ignoring code below
+def find_auto_identified_terminals_score(terminal_states_series):
+    set1 = set([x.split("_")[0] for x in terminal_states_series.dropna().unique()])
+    print(set1)
+    set2 = ['Delta', 'Epsilon', 'Alpha', 'Beta']
+    return len(set1.intersection(set2)) / len(set1.union(set2))
 
-# ck = cr.kernels.ConnectivityKernel(adata)
-# ck.compute_transition_matrix()
-# ck.plot_projection()
-# ck.plot_random_walks(start_ixs={"clusters": "Ngn3 low EP"}, max_iter=200, seed=0)
-
-# g = cr.estimators.GPCCA(ck)
-# g.fit(cluster_key="clusters", n_states=[4, 12])
-# g.plot_macrostates(which="all", discrete=True, legend_loc="right", s=100)
-# g.predict_terminal_states(method="eigengap")
-# g.plot_macrostates(which="terminal", legend_loc="right", s=100)
-
-# combined_kernel = 0.8 * vk + 0.2 * ck
-# g = cr.estimators.GPCCA(combined_kernel)
-# g.fit(cluster_key="clusters", n_states=[4, 12])
-# g.plot_macrostates(which="all", discrete=True, legend_loc="right", s=100)
-# g.predict_terminal_states(method="eigengap")
-# g.plot_macrostates(which="terminal", legend_loc="right", s=100)
+tsi_scores = {method_name: tsi_results[method_name]['score'] for method_name in tsi_results}
+auto_identified_terminals = {method_name: find_auto_identified_terminals_score(auto_terminal_states_results[method_name]['terminal_states']) 
+                             for method_name in auto_terminal_states_results}
 # -
+
+tsi_scores
+
+auto_identified_terminals
+
+
+
+for idx, (plot_data, title, y_label) in enumerate([
+    (tsi_scores, 'Macrostates Overlap with\n True Terminal States', 'TSI score'),
+    (auto_identified_terminals, 'Automatically Identified\n True Terminal States', 'Jaccard Index'),
+]):
+    plot_data = {pretify_method_name(k): v for k, v in plot_data.items()}
+    plot_series = pd.Series(plot_data).sort_values(ascending=False)
+
+    plt.figure(figsize=(3, 3.5))
+    ax = plot_series.plot(kind='bar', color='lightcoral')
+    ax.grid(False)
+    plt.title(f"{title}", fontsize=12)
+    plt.xlabel('', fontsize=12)
+    plt.ylabel(f"{y_label}", fontsize=14)
+    plt.xticks(rotation=90)
+
+    # Change min y-axis for the first plot only
+    if idx == 0:
+        plt.ylim(0.5, 1.1)
+    else:
+        plt.ylim(0., 1.13)
+
+    # Add score labels on top of each bar
+    for p in ax.patches:
+        ax.annotate(f"   {p.get_height():.2f}" if p.get_height() != 1. else "  1.0",
+                    (p.get_x() + p.get_width() / 2., p.get_height()),
+                    ha='center', va='center',
+                    xytext=(0, 10),
+                    textcoords='offset points',
+                    fontsize=12,
+                    rotation=90) # Rotate the text by 90 degrees
+
+    plt.tight_layout()
+    plt.savefig(output_dir / f'tsi_score_plot_{idx+1}_updated.pdf')
+    plt.savefig(output_dir / f'tsi_score_plot_{idx+1}_updated.png')
+    plt.show()
+
+
 
 
 
