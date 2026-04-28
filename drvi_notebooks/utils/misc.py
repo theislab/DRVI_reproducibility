@@ -1,15 +1,23 @@
+import math
 from typing import Literal
 
 def compare_objs_recursive(obj1, obj2, compare_mode: Literal['equal', 'left_in_right', 'right_in_left'] = 'equal'):
     if compare_mode == 'right_in_left':
         return compare_objs_recursive(obj2, obj1, compare_mode='left_in_right')
+
+    if isinstance(obj1, float) and math.isnan(obj1):
+        obj1 = None
+    if isinstance(obj2, float) and math.isnan(obj2):
+        obj2 = None
+    if obj1 is None and obj2 is None:
+        return True
     
     if obj1 is None and obj2 is not None:
         return compare_mode == 'left_in_right'
     if obj1 is not None and obj2 is None:
         return False
     
-    if isinstance(obj1, (int, float, bool)):
+    if isinstance(obj1, (int, float, bool)) and isinstance(obj2, (int, float, bool)):
         if abs(float(obj1) - float(obj2)) < 1e-10:
             return True
         else:
