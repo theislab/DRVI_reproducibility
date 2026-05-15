@@ -6,11 +6,11 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.15.2
+#       jupytext_version: 1.18.1
 #   kernelspec:
-#     display_name: drvi
+#     display_name: python_apptainer
 #     language: python
-#     name: drvi
+#     name: python_apptainer
 # ---
 
 # # Imports
@@ -50,8 +50,14 @@ from drvi_notebooks.utils.data.data_configs import get_data_info
 from drvi_notebooks.utils.run_info import get_run_info_for_dataset
 from drvi_notebooks.utils.method_info import pretify_method_name
 from drvi_notebooks.utils.plotting import plot_per_latent_scatter
-# -
+# +
+# Simple hack
+import IPython.display
+from matplotlib_inline.backend_inline import set_matplotlib_formats
+IPython.display.set_matplotlib_formats = set_matplotlib_formats
+    
 sc.set_figure_params(vector_friendly=True, dpi_save=300)
+# -
 
 import mplscience
 mplscience.available_styles()
@@ -356,6 +362,12 @@ fig.savefig(output_dir / f'drvi_red_blue_umaps.pdf', bbox_inches='tight', dpi=30
 fig = drvi.utils.pl.show_top_differential_vars(traverse_adata, key="combined_score", score_threshold=0.0, show=False, ncols=6,)
 fig.savefig(output_dir / f'interpretability_all.pdf', bbox_inches='tight', dpi=300)
 
+dim_subset = [k for k, v in drvi.utils.tl.iterate_on_top_differential_vars(traverse_adata, key="combined_score", score_threshold=0.0)]
+fig = drvi.utils.pl.plot_latent_dims_in_umap(embed, directional=True, ncols=5, show=False, wspace=0.1, hspace=0.25, color_bar_rescale_ratio=0.95,
+                                             dim_subset=dim_subset)
+fig.savefig(output_dir / f'interpretable_dims_latents_on_umap.pdf', bbox_inches='tight', dpi=300)
+plt.show()
+
 # +
 dimensions_interpretability = drvi.utils.tools.iterate_on_top_differential_vars(
     traverse_adata, key="combined_score", score_threshold=0.0
@@ -559,13 +571,25 @@ adata_aligned
 # -
 
 
+# +
+from matplotlib.colors import LinearSegmentedColormap
+
+cmap_data = {
+    "red": ((0.0, 0.0, 136 / 255), (0.5, 235 / 256, 235 / 256), (0.65, 0.0, 0.0), (1.0, 0.0, 0.0)),
+    "green": ((0.0, 0.0, 136 / 255), (0.5, 235 / 256, 235 / 256), (0.65, 200 / 255, 200 / 255), (1.0, 63 / 255, 0.0)),
+    "blue": ((0.0, 0.0, 136 / 255), (0.5, 235 / 256, 235 / 256), (0.65, 255 / 255, 255 / 255), (1.0, 80 / 255, 0.0)),
+}
+
+more_gray_saturated_sky_cmap = LinearSegmentedColormap("SaturatedSky", cmap_data)
+# -
+
 
 
 
 dim_subset = ['DR 30-']
 
 fig = drvi.utils.pl.plot_latent_dims_in_umap(embed, directional=True, ncols=3, show=False, wspace=0.1, hspace=0.25, color_bar_rescale_ratio=0.95,
-                                             dim_subset=dim_subset)
+                                             dim_subset=dim_subset, cmap=more_gray_saturated_sky_cmap, size=10)
 fig.savefig(output_dir / f'drvi_additional_interesting_latents_on_umap_fib.pdf', bbox_inches='tight', dpi=300)
 plt.show()
 
@@ -655,7 +679,7 @@ for method_name, embed_ in embeds.items():
 dim_subset = ['DR 20+', 'DR 29+', 'DR 17-']
 
 fig = drvi.utils.pl.plot_latent_dims_in_umap(embed, directional=True, ncols=3, show=False, wspace=0.1, hspace=0.25, color_bar_rescale_ratio=0.95,
-                                             dim_subset=dim_subset)
+                                             dim_subset=dim_subset, cmap=more_gray_saturated_sky_cmap)
 fig.savefig(output_dir / f'drvi_additional_interesting_latents_on_umap_DCs.pdf', bbox_inches='tight', dpi=300)
 plt.show()
 
