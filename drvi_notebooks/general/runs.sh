@@ -1,3 +1,95 @@
+##################################### V 5.0 ###################################### Run DRVI, DRVI-AP, and scVI for each dataset
+
+## Runs with previous settings
+
+### Immune
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys immune_hvg --encoder_dims 128,128 --n_latent 32 &
+
+### Developmental pancreas
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys pancreas_scvelo -e 1000 --encoder_dims 128 --n_latent 32 &
+
+### CRISPR screen
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys norman_hvg --encoder_dims 512,512,512 --n_latent 64 &
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys norman_hvg --encoder_dims 256,256 --n_latent 64 &
+
+### Retina organoid
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys retina_organoid_hvg --encoder_dims 128 --n_latent 32 &
+
+### PBMC
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys pbmc_covid_hvg --encoder_dims 256,256 --n_latent 64 &
+
+### HLCA
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys hlca hlca_sample --encoder_dims 256,256 --n_latent 64 &
+
+### Daniocell
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys zebrafish_hvg --encoder_dims 256,256 --n_latent 64 --split_method split --decoder_reuse_weights last &
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys zebrafish_hvg --encoder_dims 256,256 --n_latent 64 &
+
+### NeurIPS21 - scATAC
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys atac_nips21 --model poissonvi peakvi drvi --encoder_dims 256,256 --n_latent 64 &
+
+
+## Unified Arch (n_latent 128)
+
+### All datasets
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys pancreas_scvelo immune_hvg norman_hvg retina_organoid_hvg pbmc_covid_hvg hlca hlca_sample zebrafish_hvg --encoder_dims 256,256 --n_latent 128 &
+srun -p cpu_p --qos=cpu_normal-c 4 -t 24:00:00  --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys pancreas_scvelo immune_hvg norman_hvg retina_organoid_hvg pbmc_covid_hvg hlca hlca_sample zebrafish_hvg --encoder_dims 256,256 --n_latent 128 --model scvi-ica scvi-pca --skip_dim_reduction &
+
+### Developmental pancreas (more epochs since few cells)
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys pancreas_scvelo -e 1000 --encoder_dims 256,256 --n_latent 128 &
+
+### NeurIPS21 - scATAC
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys atac_nips21 --model poissonvi peakvi drvi --encoder_dims 256,256 --n_latent 128 &
+
+### gene-batch dispersion
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys retina_organoid_hvg pbmc_covid_hvg hlca_sample --dispersion gene-batch --encoder_dims 256,256 --n_latent 128 &
+
+
+### CTH datasets
+# cth_blood, cth_bone_marrow, cth_heart, cth_hippocampus, cth_intestine, cth_kidney, cth_liver, cth_lung, cth_lymph_node, cth_pancreas, cth_skeletal_muscle, cth_spleen
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys cth_blood cth_bone_marrow cth_heart cth_hippocampus cth_intestine cth_kidney cth_liver cth_lung cth_lymph_node cth_pancreas cth_skeletal_muscle cth_spleen --encoder_dims 256,256 --n_latent 128 &
+# with dispersion = gene-batch
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys cth_blood cth_bone_marrow cth_heart cth_hippocampus cth_intestine cth_kidney cth_liver cth_lung cth_lymph_node cth_pancreas cth_skeletal_muscle cth_spleen --encoder_dims 256,256 --model_seed 1 --n_latent 128 --dispersion gene-batch &
+
+# Multiple params for cth_bone_marrow
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys cth_bone_marrow --encoder_dims 256,256 --model_seed 1 --n_latent 128 --target_kl 1 0.1 --dispersion gene gene-batch &
+
+## Unified Arch _ split without map
+
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys pancreas_scvelo immune_hvg norman_hvg retina_organoid_hvg pbmc_covid_hvg hlca zebrafish_hvg --encoder_dims 256,256 --n_latent 128 --n_split_latent MAX --split_aggregation logsumexp --model_seed 1 --split_method split --decoder_reuse_weights not_first &
+
+### Developmental pancreas (more epochs since few cells)
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys pancreas_scvelo -e 1000 --encoder_dims 256,256 --n_latent 128 --n_split_latent MAX --split_aggregation logsumexp --model_seed 1  --split_method split  --decoder_reuse_weights not_first &
+
+### NeurIPS21 - scATAC
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys atac_nips21 --model poissonvi peakvi drvi --encoder_dims 256,256 --n_latent 128 --n_split_latent MAX --split_aggregation logsumexp --model_seed 1  --split_method split  --decoder_reuse_weights not_first &
+
+
+## Unified Arch + GELU/RELU/CELU activation
+
+### All datasets
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys pancreas_scvelo immune_hvg norman_hvg retina_organoid_hvg pbmc_covid_hvg hlca zebrafish_hvg --encoder_dims 256,256 --n_latent 128 --n_split_latent MAX --split_aggregation logsumexp --model_seed 1 --mean_activation gelu relu celu_0.01 &
+
+### Developmental pancreas (more epochs since few cells)
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys pancreas_scvelo -e 1000 --encoder_dims 256,256 --n_latent 128 --n_split_latent MAX --split_aggregation logsumexp --model_seed 1 --mean_activation gelu relu celu_0.01 &
+
+### NeurIPS21 - scATAC
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys atac_nips21 --model poissonvi peakvi drvi --encoder_dims 256,256 --n_latent 128 --n_split_latent MAX --split_aggregation logsumexp --model_seed 1 --mean_activation gelu relu celu_0.01 &
+
+
+## Unified Arch + GELU on layers
+
+### All datasets
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys pancreas_scvelo immune_hvg norman_hvg retina_organoid_hvg pbmc_covid_hvg hlca zebrafish_hvg --encoder_dims 256,256 --n_latent 128 --n_split_latent MAX --split_aggregation logsumexp --model_seed 1 --encoder_activation_fn gelu --decoder_activation_fn gelu &
+
+### Developmental pancreas (more epochs since few cells)
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys pancreas_scvelo -e 1000 --encoder_dims 256,256 --n_latent 128 --n_split_latent MAX --split_aggregation logsumexp --model_seed 1 --encoder_activation_fn gelu --decoder_activation_fn gelu &
+
+### NeurIPS21 - scATAC
+srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/general/drvi_runvis.py --seed $RANDOM --data_keys atac_nips21 --model poissonvi peakvi drvi --encoder_dims 256,256 --n_latent 128 --n_split_latent MAX --split_aggregation logsumexp --model_seed 1 --encoder_activation_fn gelu --decoder_activation_fn gelu &
+
+
+
 ##################################### V 4.3 #####################################
 
 

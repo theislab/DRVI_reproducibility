@@ -54,7 +54,7 @@ from sklearn.decomposition import PCA, FastICA
 
 import drvi
 
-from drvi_notebooks.utils.misc import compare_objs_recursive, check_wandb_run
+from drvi_notebooks.utils.misc import check_wandb_run, get_wandb_run
 from drvi_notebooks.utils.data import data_registry
 
 # %%
@@ -117,6 +117,8 @@ parser.add_argument('--batch_norm', nargs='+', type=str, default=['none'])
 parser.add_argument('--layer_norm', nargs='+', type=str, default=['both'])
 parser.add_argument('--affine_batch_norm', nargs='+', type=str, default=['both'])
 
+parser.add_argument('--dispersion', nargs='+', type=str, default=['gene'])
+
 # Prior
 parser.add_argument('-p', '--prior', nargs='+', type=str, default=['normal'])
 parser.add_argument('--var_activation', nargs='+', type=str, default=['exp'])
@@ -137,7 +139,8 @@ parser.add_argument('--reduce_lr_on_plateau', nargs='+', type=bool, default=[Fal
 
 # %%
 if hasattr(sys, 'ps1'):
-    args = parser.parse_args("--wb_prefix test --n_latent 256 --n_split_latent 1 MAX -e 10 --encoder_activation_fn elu --decoder_activation_fn elu".split(" "))
+    # args = parser.parse_args("--wb_prefix test --n_latent 256 --n_split_latent 1 MAX -e 10 --encoder_activation_fn elu --decoder_activation_fn elu".split(" "))
+    args = parser.parse_args("--data_keys cth_intestine --encoder_dims 256,256 --model_seed 2 --n_latent 128 --model drvi --n_split_latent MAX --split_aggregation logsumexp".split(" "))
 else:
     args = parser.parse_args()
 print(args)
@@ -267,10 +270,12 @@ for index, row in df_shuffled.iterrows():
               "".join(["*"]*26) + "\n\n")
         print(index, row)
 
-        if check_wandb_run(api, params=row.to_dict(), wandb_project=wandb_project, 
-                           wandb_key='params', true_states=['finished', 'running'], ignore_tags=['remove']):
+        similar_run = get_wandb_run(api, params=row.to_dict(), wandb_project=wandb_project, 
+                                    wandb_key='params', true_states=['finished', 'running'], ignore_tags=['remove'])
+        if similar_run is not None:
             print("" + "".join(["*"]*53) + 
                   "\n*** EXPERIMENT IS ALREADY FINISHED or RUNNING ... ***\n" + 
+                  f"\n*** Similar run: {similar_run.name} ({similar_run.id}) ***\n" +
                   "".join(["*"]*53) + "")
             continue
 
@@ -325,6 +330,10 @@ for index, row in df_shuffled.iterrows():
                 labels_key=row.cell_type_key,  # only used for calculation and logging of metrics
                 is_count_data=is_count_data
             )
+            if row.dispersion == 'gene-batch':
+                assert dataset.dataset_key is not None
+                data_setup_params['categorical_covariate_keys'] = [data_setup_params['batch_key']]
+                data_setup_params['batch_key'] = dataset.dataset_key
             
             # Model Parameters
             encoder_layer_factory = None
@@ -350,6 +359,7 @@ for index, row in df_shuffled.iterrows():
                 decoder_dims=decoder_dims,
                 covariate_modeling_strategy=row.cov_model,
                 gene_likelihood=row.gene_likelihood,
+                dispersion=row.dispersion,
                 prior=row.prior,
                 var_activation = row.var_activation,
                 mean_activation = row.mean_activation,
@@ -421,7 +431,7 @@ for index, row in df_shuffled.iterrows():
                 vae.calculate_interpretability_scores(latent_adata, "IND")
             print("Latent anndata created")
             latent_adata.write_h5ad(run_path / "latent.h5ad")
-        elif row.model.split('-')[0] in ['scvi', 'poissonvi', 'peakvi']:
+        elif row.model in ['scvi', 'poissonvi', 'peakvi']:
             assert data_type == 'anndata'
             train_adata = adata.copy()
 
@@ -435,6 +445,10 @@ for index, row in df_shuffled.iterrows():
                 layer=layer,
                 batch_key=row.batch_key,
             )
+            if row.dispersion == 'gene-batch' and row.model not in ['poissonvi', 'peakvi']:
+                assert dataset.dataset_key is not None
+                data_setup_params['categorical_covariate_keys'] = [data_setup_params['batch_key']]
+                data_setup_params['batch_key'] = dataset.dataset_key
 
             # Model parameters
             assert all([d == encoder_dims[0] for d in encoder_dims])
@@ -445,6 +459,7 @@ for index, row in df_shuffled.iterrows():
                 n_hidden=encoder_dims[0],
                 n_layers=len(encoder_dims),
                 gene_likelihood=row.gene_likelihood,
+                dispersion=row.dispersion,
                 latent_distribution=row.prior,
                 dropout_rate=row.encoder_dropout,
                 deeply_inject_covariates=row.inject_covariates == 1,
@@ -454,11 +469,13 @@ for index, row in df_shuffled.iterrows():
             )
             if row.model.startswith('peakvi'):
                 model_params.pop('gene_likelihood')
+                model_params.pop('dispersion')
                 n_layers = model_params.pop('n_layers')
                 model_params['n_layers_encoder'] = n_layers
                 model_params['n_layers_decoder'] = n_layers
             if row.model.startswith('poissonvi'):
                 model_params.pop('gene_likelihood')
+                model_params.pop('dispersion')
                 model_params.pop('use_batch_norm')
                 model_params.pop('use_layer_norm')
 
@@ -515,19 +532,40 @@ for index, row in df_shuffled.iterrows():
             
             latent_adata = ad.AnnData(latent, obs=adata.obs)
 
-            if row.model.endswith('-pca'):
-                latent_adata.obsm[f'{row.model.split("-")[0]}_latent'] = latent_adata.X.copy()
-                latent_adata.X = PCA(n_components=row.n_latent, random_state=row.model_seed).fit_transform(latent_adata.X)
-            elif row.model == 'scvi-ica':
-                latent_adata.obsm['scvi_latent'] = latent_adata.X.copy()
-                latent_adata.X = FastICA(n_components=row.n_latent, random_state=row.model_seed, whiten='unit-variance', whiten_solver='eigh').fit_transform(latent_adata.X)
-
             # For comparability with DRVI plots
             latent_adata.var['vanished'] = np.abs(latent_adata.X).max(axis=0) / np.abs(latent_adata.X).max() < 0.05
             latent_adata.var['order'] = np.argsort(-np.abs(latent_adata.X).sum(axis=0))
             latent_adata.var['title'] = 'Dim ' + (latent_adata.var['order'] + 1).astype(str)
                 
             latent_adata.write_h5ad(run_path / "latent.h5ad")
+        elif row.model.endswith('-pca') or row.model.endswith('-ica'):
+            upstream_model_params = row.to_dict().copy()
+            upstream_model_params['model'] = row.model.split('-')[0]
+            upstream_model_run = get_wandb_run(api, params=upstream_model_params, wandb_project=wandb_project, 
+                                               wandb_key='params', true_states=['finished'], ignore_tags=['remove'])
+            if upstream_model_run is None:
+                raise ValueError(f"Upstream model {row.model.split('-')[0]} not found.")
+            upstream_latent_adata = ad.read_h5ad(Path(upstream_model_run.config['output_dir']) / "latent.h5ad")
+
+            if row.model.endswith('-pca'):
+                latent = PCA(n_components=row.n_latent, random_state=row.model_seed).fit_transform(upstream_latent_adata.X)
+            elif row.model.endswith('-ica'):
+                latent = FastICA(n_components=row.n_latent, random_state=row.model_seed, whiten='unit-variance', whiten_solver='eigh').fit_transform(upstream_latent_adata.X)
+
+            latent_adata = ad.AnnData(latent, obs=upstream_latent_adata.obs)
+            latent_adata.obsm['upstream_latent'] = upstream_latent_adata.X.copy()
+
+            # For comparability with DRVI plots
+            latent_adata.var['vanished'] = np.abs(latent_adata.X).max(axis=0) / np.abs(latent_adata.X).max() < 0.05
+            if row.model.endswith('-ica'):
+                latent_adata.var['order'] = np.argsort(-np.abs(latent_adata.X).sum(axis=0))
+            else:
+                latent_adata.var['order'] = np.arange(latent_adata.n_vars)
+            latent_adata.var['title'] = 'Dim ' + (latent_adata.var['order'] + 1).astype(str)
+
+            latent_adata.write_h5ad(run_path / "latent.h5ad")
+        else:
+            raise ValueError(f"Model {row.model} not supported.")
 
         benchmark = None
         if not SKIP_EVALUATION:
@@ -544,6 +582,7 @@ for index, row in df_shuffled.iterrows():
 
             for metric_name, val in benchmark.get_results().items():
                 wandb.run.summary[metric_name] = val
+            wandb.run.summary['benchmark version'] = benchmark.version
 
         if not SKIP_DIM_REDUCTION:
             latent_adata.obsm['qz_mean'] = latent_adata.X

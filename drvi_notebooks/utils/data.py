@@ -1,12 +1,7 @@
 import os
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 import anndata as ad
-import numpy as np
-import pandas as pd
-import scanpy as sc
-
-import drvi
 
 
 class DataInfo:
@@ -19,16 +14,18 @@ class DataInfo:
     normalized_layer: Optional[str] = None
     gene_likelihood: str = ""
     cell_type_key: Optional[str] = None
+    dataset_key: Optional[str] = None
     batch_key: Optional[str] = None
+    sample_key: Optional[str] = None
     display_name: str = ""
     plot_cols: Dict[str, str] = {}  # Display name mapping
 
     def __init__(self):
-        self.adata = self.load()
+        pass
 
     @classmethod
-    def _load(cls):
-        return ad.read_h5ad(os.path.expanduser(cls.adata_path))
+    def _load(cls, backed: Optional[str] = None):
+        return ad.read_h5ad(os.path.expanduser(cls.adata_path), backed=backed)
 
     @classmethod
     def _pre_process(cls, adata):
@@ -39,11 +36,11 @@ class DataInfo:
         return adata
 
     @classmethod
-    def load(cls):
+    def load(cls, backed: Optional[str] = None):
         """
         Full pipeline: load, preprocess, and postprocess.
         """
-        adata = cls._load()
+        adata = cls._load(backed=backed)
         adata = cls._pre_process(adata)
         adata = cls._post_process(adata)
         return adata
@@ -57,6 +54,7 @@ class ImmuneHVG(DataInfo):
     gene_likelihood = "pnb"
     cell_type_key = "final_annotation"
     batch_key = "batch"
+    sample_key = "batch"
     display_name = "Immune\n"
     plot_cols = {
         'batch': 'Batch',
@@ -91,6 +89,7 @@ class HLCA(DataInfo):
     gene_likelihood = "pnb"
     cell_type_key = "ann_finest_level"
     batch_key = "dataset"
+    sample_key = "sample"
     display_name = "Human lung\ncell atlas"
     plot_cols = {
         'dataset': 'Dataset',
@@ -101,6 +100,13 @@ class HLCA(DataInfo):
     }
     control_treatment_key = 'lung_condition'
     split_key = 'donor_id'
+
+
+class HLCA_Sample(HLCA):
+    data_key = "hlca_sample"
+    batch_key = "sample"
+    dataset_key = "dataset"
+    sample_key = "sample"
 
 
 class PancreasScvelo(DataInfo):
@@ -129,6 +135,8 @@ class PBMCCovidHVG(DataInfo):
     gene_likelihood = "pnb"
     cell_type_key = "full_clustering"
     batch_key = "sample_id"
+    sample_key = "sample_id"
+    dataset_key = "Site"
     display_name = "PBMC\n"
     plot_cols = {
         "Site": "Batch",
@@ -146,6 +154,8 @@ class RetinaOrganoidHVG(DataInfo):
     gene_likelihood = "pnb"
     cell_type_key = "cell_type"
     batch_key = "sample_id"
+    sample_key = "sample_id"
+    dataset_key = "source"
     display_name = "Retina organoid\n"
     plot_cols = {
         "source": "Source",
@@ -187,7 +197,7 @@ class AtacNips21(DataInfo):
         "site": "Site",
         "donor": "Donor",
     }
-
+    sample_key = "batch"
 
 class SyntheticDataAbstract(DataInfo):
     data_key = "synthetic_data_ABSTRACT"
@@ -390,6 +400,89 @@ class SyntheticDataOverlapping4(SyntheticDataAbstract):
 #     adata_path = "~/data/pertpy/sciplex3_all.h5ad"
 
 
+class CTHBase(DataInfo):
+    counts_layer = "counts"
+    normalized_layer = "X"
+    gene_likelihood = "pnb"
+    cell_type_key = "Curated_annotation"
+    label_key = "Curated_annotation"
+    batch_key = "donor_id"
+    dataset_key = "Dataset"
+    sample_key = "donor_id"
+
+
+class CTHBlood(CTHBase):
+    data_key = "cth_blood"
+    display_name = "Blood"
+    adata_path = "~/data/cth_datasets/Blood_hvg4000.h5ad"
+
+
+class CTHBoneMarrow(CTHBase):
+    data_key = "cth_bone_marrow"
+    display_name = "Bone Marrow"
+    adata_path = "~/data/cth_datasets/Bone_marrow_hvg4000.h5ad"
+
+
+class CTHHeart(CTHBase):
+    data_key = "cth_heart"
+    display_name = "Heart"
+    adata_path = "~/data/cth_datasets/Heart_hvg4000.h5ad"
+
+
+class CTHHippocampus(CTHBase):
+    data_key = "cth_hippocampus"
+    display_name = "Hippocampus"
+    adata_path = "~/data/cth_datasets/Hippocampus_hvg4000.h5ad"
+
+
+class CTHIntestine(CTHBase):
+    data_key = "cth_intestine"
+    display_name = "Intestine"
+    adata_path = "~/data/cth_datasets/Intestine_hvg4000.h5ad"
+
+
+class CTHKidney(CTHBase):
+    data_key = "cth_kidney"
+    display_name = "Kidney"
+    adata_path = "~/data/cth_datasets/Kidney_hvg4000.h5ad"
+
+
+class CTHLiver(CTHBase):
+    data_key = "cth_liver"
+    display_name = "Liver"
+    adata_path = "~/data/cth_datasets/Liver_hvg4000.h5ad"
+
+
+class CTHLung(CTHBase):
+    data_key = "cth_lung"
+    display_name = "Lung"
+    adata_path = "~/data/cth_datasets/Lung_hvg4000.h5ad"
+
+
+class CTHLymphNode(CTHBase):
+    data_key = "cth_lymph_node"
+    display_name = "Lymph Node"
+    adata_path = "~/data/cth_datasets/Lymph_node_hvg4000.h5ad"
+
+
+class CTHPancreas(CTHBase):
+    data_key = "cth_pancreas"
+    display_name = "Pancreas"
+    adata_path = "~/data/cth_datasets/Pancreas_hvg4000.h5ad"
+
+
+class CTHSkeletalMuscle(CTHBase):
+    data_key = "cth_skeletal_muscle"
+    display_name = "Skeletal Muscle"
+    adata_path = "~/data/cth_datasets/Skeletal_muscle_hvg4000.h5ad"
+
+
+class CTHSpleen(CTHBase):
+    data_key = "cth_spleen"
+    display_name = "Spleen"
+    adata_path = "~/data/cth_datasets/Spleen_hvg4000.h5ad"
+
+
 class DataRegistry:
     def __init__(self):
         self._registry: Dict[str, type[DataInfo]] = {}
@@ -412,6 +505,7 @@ data_registry.register(ImmuneHVG)
 data_registry.register(ImmuneAll)
 data_registry.register(NormanHVG)
 data_registry.register(HLCA)
+data_registry.register(HLCA_Sample)
 data_registry.register(PancreasScvelo)
 data_registry.register(PBMCCovidHVG)
 data_registry.register(RetinaOrganoidHVG)
@@ -424,6 +518,20 @@ data_registry.register(SyntheticDataUniqueNoNoise)
 data_registry.register(SyntheticDataUnique)
 data_registry.register(SyntheticDataOverlapping4NoNoise)
 data_registry.register(SyntheticDataOverlapping4)
+
+# CTH datasets
+data_registry.register(CTHBlood)
+data_registry.register(CTHBoneMarrow)
+data_registry.register(CTHHeart)
+data_registry.register(CTHHippocampus)
+data_registry.register(CTHIntestine)
+data_registry.register(CTHKidney)
+data_registry.register(CTHLiver)
+data_registry.register(CTHLung)
+data_registry.register(CTHLymphNode)
+data_registry.register(CTHPancreas)
+data_registry.register(CTHSkeletalMuscle)
+data_registry.register(CTHSpleen)
 
 
 def get_data_info(run_name: str, version_str: str):

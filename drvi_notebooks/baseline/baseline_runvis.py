@@ -33,7 +33,20 @@ import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
+import builtins
 
+if not hasattr(builtins, "exit"):
+    builtins.exit = sys.exit
+
+try:
+    import pkg_resources
+except ImportError:
+    from types import ModuleType
+    pkg_resources = ModuleType("pkg_resources")
+    pkg_resources.get_distribution = lambda x: ModuleType("dist")
+    sys.modules["pkg_resources"] = pkg_resources
+
+import joblib
 import anndata as ad
 import numpy as np
 import pandas as pd
@@ -42,6 +55,8 @@ import scanpy as sc
 import wandb
 import yaml
 from scipy import sparse
+from scipy.special import softmax
+import torch
 
 import scvi
 import drvi
@@ -49,7 +64,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import linear_sum_assignment
 
 from drvi_notebooks.utils.data import data_registry
-from drvi_notebooks.utils.misc import compare_objs_recursive, check_wandb_run, get_wandb_run
+from drvi_notebooks.utils.misc import check_wandb_run, get_wandb_run
 # %%
 
 # %%
@@ -78,21 +93,22 @@ parser.add_argument('--skip_evaluation', action='store_true')
 # Input data
 parser.add_argument('--data_keys', nargs='+', type=str, default=['immune_hvg'])
 
-# Test data
+# Test data (ignored)
 parser.add_argument('--train_col', nargs='+', type=str, default=["ALL"])
 
 # Model Arch
 parser.add_argument('--n_latent', nargs='+', type=int, default=[32])
 parser.add_argument('--model', nargs='+', type=str, default=['pca', 'ica', 'mofa', 'liger', 'scetm'])
 parser.add_argument('--model_seed', nargs='+', type=int, default=[1, 2, 3])
-parser.add_argument('--n_epochs', nargs='+', type=int, default=100)
-parser.add_argument('--spikeslab_weights', nargs='+', type=lambda x: (str(x).lower() == 'true'), default=[True, False])
-parser.add_argument('--spikeslab_factors', nargs='+', type=lambda x: (str(x).lower() == 'true'), default=[True, False])
+parser.add_argument('--n_epochs', nargs='+', type=int, default=400)
+parser.add_argument('--spikeslab_weights', nargs='+', type=lambda x: (str(x).lower() == 'true'), default=[True])
+parser.add_argument('--spikeslab_factors', nargs='+', type=lambda x: (str(x).lower() == 'true'), default=[True])
 
 # %%
 if hasattr(sys, 'ps1'):
-    # args = parser.parse_args("--wb_prefix test --model pca ica mofa liger scetm --n_latent 128".split(" "))
-    args = parser.parse_args("--data_keys immune_hvg retina_organoid_hvg --n_latent 32 --n_epochs 400".split(" "))
+    args = parser.parse_args("--wb_prefix test_interpretability --model_seed 1 --model pca ica mofa liger scetm --n_latent 32".split(" "))
+    # args = parser.parse_args("--data_keys immune_hvg retina_organoid_hvg --n_latent 32 --n_epochs 400".split(" "))
+    # args = parser.parse_args("--model liger --data_keys norman_hvg --n_latent 128 --n_epochs 400".split(" "))
 else:
     args = parser.parse_args()
 print(args)
@@ -172,6 +188,25 @@ import h5py
 import pyliger
 from scETM import scETM, UnsupervisedTrainer, evaluate
 
+# Use the fork which is compatible with TF2 and is pip installable.
+import michigan
+
+
+# %%
+# Persistence: sklearn docs recommend joblib for fitted estimators (PCA/ICA).
+# MOFA: mofapy2 mofa() ends with entry_point.save() to HDF5 (outfile).
+# scETM: UnsupervisedTrainer.save_model_and_optimizer via ckpt_dir + save_model_ckpt.
+# LIGER: pyliger Liger.save / read_write.save are empty stubs in 0.2.4; joblib used.
+MODEL_ARTIFACT_NAMES = {
+    'pca': 'sklearn_model.joblib',
+    'ica': 'sklearn_model.joblib',
+    'mofa': 'mofa_model.joblib',
+    'liger': 'liger_model.joblib',
+}
+
+GENE_INTERPRETABILITY_VARM_KEY = 'gene_interpretability'
+GENE_INTERPRETABILITY_COL_GENES_UNS_KEY = 'gene_interpretability_col_genes'
+
 
 # %% [markdown]
 # ## Train model
@@ -239,36 +274,38 @@ for index, row in df_shuffled.iterrows():
             if row.model == 'pca':
                 layer = row.lognorm_layer if row.lognorm_layer is not None else 'X'
                 X = adata.X if layer == 'X' else adata.layers[layer]
-                X_train = train_adata.X if layer == 'X' else train_adata.layers[layer]
                 if sparse.issparse(X):
                     X = X.astype(np.float32).toarray()
-                if sparse.issparse(X_train):
-                    if row.train_col == "ALL":
-                        X_train = X
-                    else:
-                        X_train = X_train.astype(np.float32).toarray()
                 
                 pipeline = Pipeline([('scaling', StandardScaler(with_mean=True, with_std=False)), 
                                      ('pca', PCA(n_components=row.n_latent, random_state=row.model_seed))])
-                pipeline.fit(X_train)
+                pipeline.fit(X)
                 latent = pipeline.transform(X)
+                latent_adata = ad.AnnData(latent, obs=adata.obs)
+                gene_interpretability = np.asarray(pipeline.named_steps['pca'].components_, dtype=np.float32)
+                gene_names = list(adata.var_names.astype(str))
+                latent_adata.varm[GENE_INTERPRETABILITY_VARM_KEY] = gene_interpretability
+                latent_adata.uns[GENE_INTERPRETABILITY_COL_GENES_UNS_KEY] = gene_names
+                joblib.dump(pipeline, run_path / MODEL_ARTIFACT_NAMES['pca'])
             
             elif row.model == 'ica':
                 layer = row.lognorm_layer if row.lognorm_layer is not None else 'X'
                 X = adata.X if layer == 'X' else adata.layers[layer]
-                X_train = train_adata.X if layer == 'X' else train_adata.layers[layer]
                 if sparse.issparse(X):
                     X = X.astype(np.float32).toarray()
-                if sparse.issparse(X_train):
-                    if row.train_col == "ALL":
-                        X_train = X
-                    else:
-                        X_train = X_train.astype(np.float32).toarray()
 
                 pipeline = Pipeline([('scaling', StandardScaler(with_mean=True, with_std=False)), 
                                      ('ica', FastICA(n_components=row.n_latent, random_state=row.model_seed, whiten='unit-variance', whiten_solver='eigh'))])
-                pipeline.fit(X_train)
+                pipeline.fit(X)
                 latent = pipeline.transform(X)
+                latent_adata = ad.AnnData(latent, obs=adata.obs)
+                # FastICA generative form X_centered ~= S @ mixing_.T, so gene loading on
+                # source k is mixing_[:, k] (not the unmixing matrix components_).
+                gene_interpretability = np.asarray(pipeline.named_steps['ica'].mixing_.T, dtype=np.float32)
+                gene_names = list(adata.var_names.astype(str))
+                latent_adata.varm[GENE_INTERPRETABILITY_VARM_KEY] = gene_interpretability
+                latent_adata.uns[GENE_INTERPRETABILITY_COL_GENES_UNS_KEY] = gene_names
+                joblib.dump(pipeline, run_path / MODEL_ARTIFACT_NAMES['ica'])
             elif row.model == 'mofa':
                 # use_gpu = adata.n_obs < 30_000
                 use_gpu = True
@@ -289,7 +326,13 @@ for index, row in df_shuffled.iterrows():
                     outfile=outfile,
                     quiet=False,
                 )
+                joblib.dump(m, run_path / MODEL_ARTIFACT_NAMES['mofa'])
                 latent = adata.obsm['X_mofa']
+                latent_adata = ad.AnnData(latent, obs=adata.obs)
+                gene_interpretability = np.asarray(adata.varm['LFs'].T, dtype=np.float32)
+                gene_names = list(adata.var_names.astype(str))
+                latent_adata.varm[GENE_INTERPRETABILITY_VARM_KEY] = gene_interpretability
+                latent_adata.uns[GENE_INTERPRETABILITY_COL_GENES_UNS_KEY] = gene_names
             elif row.model == 'liger':
                 if row.batch_key is not None and row.batch_key != "":
                     adata_list = []
@@ -331,8 +374,20 @@ for index, row in df_shuffled.iterrows():
                 # Same hack to make sure each method uses the same genes (https://scib-metrics.readthedocs.io/en/stable/notebooks/lung_example.html)
                 # pyliger.select_genes(liger_obj)
                 pyliger.scale_not_center(liger_obj)
+                # Fix normalized genes to nan
+                for subset_adata in liger_obj.adata_list:
+                    if sparse.issparse(subset_adata.layers['scale_data']):
+                        subset_adata.layers['scale_data'].data = np.nan_to_num(subset_adata.layers['scale_data'].data)
+                    else:
+                        subset_adata.layers['scale_data'] = np.nan_to_num(subset_adata.layers['scale_data'])
                 pyliger.optimize_ALS(liger_obj, k=row.n_latent, rand_seed=row.model_seed)
                 pyliger.quantile_norm(liger_obj)
+                joblib.dump(liger_obj, run_path / MODEL_ARTIFACT_NAMES['liger'])
+                
+                _w_src = liger_obj.adata_list[0].varm['W']
+                _w_idx = np.asarray(liger_obj.adata_list[0].uns['var_gene_idx']).ravel()
+                gene_interpretability = np.asarray(_w_src[_w_idx, :], dtype=np.float32).T
+                gene_names = list(adata.var_names.astype(str))
 
                 latent_adata = ad.AnnData(
                     np.concatenate([subset_adata.obsm['H_norm'] for subset_adata in liger_obj.adata_list]),
@@ -341,6 +396,8 @@ for index, row in df_shuffled.iterrows():
                 latent_adata.layers['H'] = np.concatenate([subset_adata.obsm['H'] for subset_adata in liger_obj.adata_list])
                 latent_adata.obsm['qz_mean'] = latent_adata.X
                 latent_adata = latent_adata[adata.obs.index].copy()
+                latent_adata.varm[GENE_INTERPRETABILITY_VARM_KEY] = gene_interpretability
+                latent_adata.uns[GENE_INTERPRETABILITY_COL_GENES_UNS_KEY] = gene_names
             elif row.model == 'scetm':
                 # requires count data
                 adata_train = adata.copy()
@@ -353,15 +410,34 @@ for index, row in df_shuffled.iterrows():
                 else:
                     n_batches = 0
                     batch_key = "dummy"
-                    adata.obs[batch_key] = "X"
+                    adata_train.obs[batch_key] = "X"
                 model = scETM(
                     n_trainable_genes=adata_train.n_vars,
                     n_batches=n_batches,
                     n_topics=row.n_latent,
                 )
-                trainer = UnsupervisedTrainer(model, adata_train)
-                trainer.train(n_epochs=int(row.n_epochs), batch_col=batch_key, eval=False, save_model_ckpt=False)
+                n_epochs_int = int(row.n_epochs)
+                trainer = UnsupervisedTrainer(
+                    model,
+                    adata_train,
+                    ckpt_dir=str(run_path),
+                    train_instance_name='scETM',
+                    seed=int(row.model_seed),
+                )
+                trainer.train(
+                    n_epochs=n_epochs_int,
+                    batch_col=batch_key,
+                    eval=False,
+                    save_model_ckpt=True,
+                    eval_every=n_epochs_int,
+                )
                 model.get_cell_embeddings_and_nll(adata_train, batch_col=batch_key)
+                with torch.no_grad():
+                    beta = (model.alpha @ model.rho).float().cpu().numpy()
+                    alpha = np.asarray(model.alpha.detach().cpu().numpy(), dtype=np.float32)
+                    rho = np.asarray(model.rho.detach().cpu().numpy(), dtype=np.float32)
+                gene_interpretability = softmax(beta, axis=1).astype(np.float32)
+                gene_names = list(adata_train.var_names.astype(str))
 
                 _theta = adata_train.obsm['theta']
                 _delta = adata_train.obsm['delta']
@@ -373,13 +449,74 @@ for index, row in df_shuffled.iterrows():
                 latent_adata = ad.AnnData(_theta, obs=adata_train.obs)
                 latent_adata.obsm['qz_mean'] = latent_adata.X
                 latent_adata.obsm['delta'] = _delta
+                latent_adata.uns['scetm_alpha'] = alpha
+                latent_adata.uns['scetm_rho'] = rho
+                latent_adata.varm[GENE_INTERPRETABILITY_VARM_KEY] = gene_interpretability
+                latent_adata.uns[GENE_INTERPRETABILITY_COL_GENES_UNS_KEY] = gene_names
+            elif row.model == 'btcvae':
+                layer = row.lognorm_layer if row.lognorm_layer is not None else 'X'
+                X = adata.X if layer == 'X' else adata.layers[layer]
+                if sparse.issparse(X):
+                    X = X.astype(np.float32).toarray()
+                michigan.BTCVAE(
+                    embeddings_path=str(run_path / "btcvae.npy"),
+                    checkpoint_dir=str(run_path / "checkpoint_dir"),
+                    epochs=row.n_epochs,
+                    # default: 100, 100, 10; which results in latent collapse. Our optimization:
+                    lambda_total_correlation=10,
+                    lambda_gradient_penalty=10,
+                    lambda_mutual_information=1,
+                ).train(X)
+                latent = np.load(run_path / "btcvae.npy")
+                latent_adata = ad.AnnData(latent, obs=adata.obs)
+                michigan.reset_tensorflow_state()
+            elif row.model == 'michigan':
+                layer = row.lognorm_layer if row.lognorm_layer is not None else 'X'
+                X = adata.X if layer == 'X' else adata.layers[layer]
+                if sparse.issparse(X):
+                    X = X.astype(np.float32).toarray()
+                upstream_model_params = row.to_dict().copy()
+                upstream_model_params['model'] = 'btcvae'
+                btcvae_run = get_wandb_run(api, params=upstream_model_params, wandb_project=wandb_project, 
+                                           wandb_key='params', true_states=['finished'], ignore_tags=['remove'])
+                if btcvae_run is None:
+                    raise ValueError(f"BTCVAE run not found.")
+                michigan.MICHIGAN(
+                    embeddings_path=str(run_path / "michigan.npy"),
+                    beta_tcvae_checkpoint_dir=str(Path(btcvae_run.config['output_dir']) / "checkpoint_dir"),
+                    checkpoint_dir=str(run_path / "checkpoint_dir"),
+                    epochs=row.n_epochs,
+                    # default: 100, 100, 10; which results in latent collapse. Our optimization:
+                    lambda_total_correlation=10,
+                    lambda_gradient_penalty=10,
+                    lambda_mutual_information=1,
+                ).train(X)
+                latent = np.load(run_path / "michigan.npy")
+                latent_adata = ad.AnnData(latent, obs=adata.obs)
+                michigan.reset_tensorflow_state()
             else:
                 raise NotImplementedError(f"Model: {row.model}")
+
+            if row.model == 'scetm':
+                model_artifact_val = str(Path(trainer.ckpt_dir).relative_to(run_path))
+                artifact_extra = {'scetm_checkpoint_epoch': int(row.n_epochs)}
+            elif row.model in MODEL_ARTIFACT_NAMES:
+                model_artifact_val = MODEL_ARTIFACT_NAMES[row.model]
+                artifact_extra = {}
+            else:
+                model_artifact_val = None
+                artifact_extra = {}
+            run.config.update(
+                {'model_artifact': model_artifact_val, **artifact_extra},
+                allow_val_change=True,
+            )
+            cfg_on_disk = dict(row.to_dict())
+            cfg_on_disk['model_artifact'] = model_artifact_val
+            cfg_on_disk.update(artifact_extra)
+            with open(run_path / 'config.yaml', 'w') as yaml_file:
+                yaml.dump(cfg_on_disk, yaml_file, default_flow_style=False)
                 
             ########################################
-
-            if row.model not in ['liger', 'scetm']:  # Already anndata
-                latent_adata = ad.AnnData(latent, obs=adata.obs)
 
             # For comparability with DRVI plots
             latent_adata.var['vanished'] = np.abs(latent_adata.X).max(axis=0) / np.abs(latent_adata.X).max() < 0.05
@@ -403,6 +540,7 @@ for index, row in df_shuffled.iterrows():
 
                 for metric_name, val in benchmark.get_results().items():
                     wandb.run.summary[metric_name] = val
+                wandb.run.summary['benchmark version'] = benchmark.version
 
             if not SKIP_DIM_REDUCTION:
                 latent_adata.obsm['qz_mean'] = latent_adata.X
@@ -428,10 +566,10 @@ for index, row in df_shuffled.iterrows():
         else:
             raise NotImplementedError()
         wandb.finish()
-    except Exception as e:
+    except BaseException as e:
         traceback.print_exc()
         wandb.finish(exit_code=1)
-        # raise e
+        raise e
 
 
 # %%
