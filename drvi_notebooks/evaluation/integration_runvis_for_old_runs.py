@@ -59,15 +59,17 @@ parser.add_argument('--wandb_project', type=str, required=True)
 parser.add_argument('--seed', type=int, default=0)
 parser.add_argument('--n_sample', type=int, default=100_000)
 parser.add_argument('--sample_seed', type=int, default=1)
+parser.add_argument('--data_key', type=str, required=True)
 
 if hasattr(sys, 'ps1'):
-    args = parser.parse_args("--wandb_project DRVI_runs__DRVI_5.0 --seed 0".split(" "))
+    args = parser.parse_args("--wandb_project DRVI_runs_atac_modality_hvg_drvi_4.3 --data_key atac_nips21 --seed 0".split(" "))
 else:
     args = parser.parse_args()
 print(args)
 
 wandb_project = args.wandb_project
 seed = args.seed
+data_key = args.data_key
 
 # %%
 benchmark_version = "v3_1"
@@ -76,10 +78,7 @@ benchmark_version = "v3_1"
 api = wandb.Api()
 api.flush()
 
-runs = list(api.runs("moinfar_proj/" + wandb_project, filters={
-    "summary_metrics.scib_benchmark_version": {"$ne": benchmark_version},
-    "config.params.batch_key": {"$ne": None}
-}))
+runs = list(api.runs("moinfar_proj/" + wandb_project, filters={"summary_metrics.scib_benchmark_version": {"$ne": benchmark_version}}))
 
 np.random.seed(seed)
 np.random.shuffle(runs)
@@ -95,14 +94,20 @@ for run_info in runs:
     # if run_info.state != "finished":
     #     print(f"Run {run_info.name}({run_info.id}) is not finished. Skipping.")
     #     continue
+
+    if run_info.config['params']['model'] == 'drvi':
+        print(f"Skipping DRVI run {run_info.name}({run_info.id})")
+        continue
         
     try:
         print(f"\nChecking run {run_info.name}({run_info.id})")
 
-        run_path = Path(run_info.config['output_dir']) 
+        run_path = Path('/home/icb/amirali.moinfar/workspace/train_logs/models/' + run_info.name) 
+        print(run_path)
+
         benchmark_path = run_path / f"integration_metrics_{benchmark_version}.csv"
         embed_index_path = run_path / f"integration_metrics_{benchmark_version}_obs_index.csv"
-        ds = data_registry.get(run_info.config['params']['data_keys'])
+        ds = data_registry.get(data_key)
         print(ds.data_key)
 
         if not (run_path / 'latent.h5ad').exists():
@@ -130,7 +135,7 @@ for run_info in runs:
         if args.n_sample is not None and args.n_sample < adata.n_obs:
             np.random.seed(args.sample_seed)
             adata = adata[np.random.choice(adata.n_obs, size=args.n_sample, replace=False)]
-        embed = embed[adata.obs.index].copy()
+            embed = embed[adata.obs.index].copy()
         
         # Get condition and cell type keys from the dataset
         condition_key = ds.sample_key

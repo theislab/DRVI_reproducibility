@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.18.1
 #   kernelspec:
 #     display_name: python_apptainer
 #     language: python
@@ -27,9 +27,6 @@ import numpy as np
 import pandas as pd
 import scanpy as sc
 from scipy import sparse
-import yaml
-from pytorch_lightning.loggers.tensorboard import TensorBoardLogger
-from pytorch_lightning.loggers.wandb import WandbLogger
 
 # %%
 from drvi.utils.misc import hvg_batch
@@ -120,7 +117,40 @@ for filename in dataset_filenames:
         print(adata_hvg)
     else:
         adata_hvg = sc.read_h5ad(hvg_filename, backed='r')
+        print("N cells:", adata_hvg.n_obs)
+        print("N cell types:", adata_hvg.obs['Curated_annotation'].nunique())
+        print("N datasets:", adata_hvg.obs['Dataset'].nunique())
+        print("N samples:", adata_hvg.obs['donor_id'].nunique())
+        print(adata_hvg)
         hvgs[filename.name] = adata_hvg.var.index
 # %%
+
+# %%
+
+# %%
+
+# %%
+
+# %% [markdown]
+# ## Splitting blood
+
+# %%
+filename = dataset_filenames[0]
+filename = Path(filename).expanduser()
+hvg_filename = filename.parent / f"{filename.stem}_hvg4000{filename.suffix}"
+print(hvg_filename)
+
+adata_hvg = sc.read_h5ad(hvg_filename, backed='r')
+
+for ds_name, obs_groups in adata_hvg.obs.groupby("Dataset"):
+    print(ds_name, ds_name.split(" ")[0])
+    split_filename = hvg_filename.parent / f"{hvg_filename.stem}_{ds_name.split(" ")[0]}{hvg_filename.suffix}"
+    print(split_filename)
+
+    if split_filename.exists():
+        continue
+
+    adata_subset = adata_hvg[obs_groups.index]
+    adata_subset.write_h5ad(split_filename)
 
 # %%

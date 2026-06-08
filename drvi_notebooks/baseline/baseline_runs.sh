@@ -2,34 +2,37 @@
 
 ## Runs with previous settings
 
-#### Smaller datasets
-srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/baseline/baseline_runvis.py --seed $RANDOM --data_keys immune_hvg retina_organoid_hvg --n_latent 32 --n_epochs 400 &
-srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/baseline/baseline_runvis.py --seed $RANDOM --data_keys pancreas_scvelo --n_latent 32 --n_epochs 1000 &
+### Smaller datasets
+python baseline_runvis.py --seed $RANDOM --data_keys immune_hvg retina_organoid_hvg --n_latent 32 --n_epochs 400 &
+python baseline_runvis.py --seed $RANDOM --data_keys pancreas_scvelo --n_latent 32 --n_epochs 1000 &
+python baseline_runvis.py --seed $RANDOM --data_keys immune_hvg retina_organoid_hvg --n_latent 32 --n_epochs 100 --model btcvae &
+python baseline_runvis.py --seed $RANDOM --data_keys immune_hvg retina_organoid_hvg --n_latent 32 --n_epochs 100 --model michigan &
 
 
-#### Larger datasets
-srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/baseline/baseline_runvis.py --seed $RANDOM --data_keys hlca hlca_sample norman_hvg zebrafish_hvg pbmc_covid_hvg --n_latent 64 --n_epochs 400 &
+### Larger datasets
+python baseline_runvis.py --seed $RANDOM --data_keys hlca hlca_sample norman_hvg zebrafish_hvg pbmc_covid_hvg --n_latent 64 --n_epochs 400 &
+python baseline_runvis.py --seed $RANDOM --data_keys hlca hlca_sample norman_hvg zebrafish_hvg pbmc_covid_hvg --n_latent 64 --n_epochs 100 --model btcvae &
+python baseline_runvis.py --seed $RANDOM --data_keys hlca hlca_sample norman_hvg zebrafish_hvg pbmc_covid_hvg --n_latent 64 --n_epochs 100 --model michigan &
 
-#### Simulated data
-
-srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/baseline/baseline_runvis.py --seed $RANDOM --data_keys synthetic_data_unique_no_noise --n_latent 32 --n_epochs 400 &
-
-srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/baseline/baseline_runvis.py --seed $RANDOM --data_keys synthetic_data_unique --n_latent 32 --n_epochs 400 &
-
-srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/baseline/baseline_runvis.py --seed $RANDOM --data_keys synthetic_data_overlapping_4_no_noise --n_latent 32 --n_epochs 400 &
-
-srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/baseline/baseline_runvis.py --seed $RANDOM --data_keys synthetic_data_overlapping_4 --n_latent 32 --n_epochs 400 &
-
+### Simulated data
+python baseline_runvis.py --seed $RANDOM --data_keys synthetic_data_unique_no_noise synthetic_data_unique synthetic_data_overlapping_4_no_noise synthetic_data_overlapping_4 --n_latent 32 64 --n_epochs 400 &
+python baseline_runvis.py --seed $RANDOM --data_keys synthetic_data_unique_no_noise synthetic_data_unique synthetic_data_overlapping_4_no_noise synthetic_data_overlapping_4 --n_latent 32 64 --n_epochs 100 --model btcvae &
+python baseline_runvis.py --seed $RANDOM --data_keys synthetic_data_unique_no_noise synthetic_data_unique synthetic_data_overlapping_4_no_noise synthetic_data_overlapping_4 --n_latent 32 64 --n_epochs 100 --model michigan &
 
 ## Unified Arch (n_latent 128)
 
-#### All datasets
-srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/baseline/baseline_runvis.py --seed $RANDOM --data_keys immune_hvg pancreas_scvelo retina_organoid_hvg hlca hlca_sample norman_hvg zebrafish_hvg pbmc_covid_hvg --n_latent 128 --n_epochs 400 &
-srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/baseline/baseline_runvis.py --seed $RANDOM --data_keys immune_hvg pancreas_scvelo retina_organoid_hvg hlca hlca_sample norman_hvg zebrafish_hvg pbmc_covid_hvg --n_latent 128 --n_epochs 400 --model btcvae &
-srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/baseline/baseline_runvis.py --seed $RANDOM --data_keys immune_hvg pancreas_scvelo retina_organoid_hvg hlca hlca_sample norman_hvg zebrafish_hvg pbmc_covid_hvg --n_latent 128 --n_epochs 400 --model michigan &
+### CTH datasets
+python baseline_runvis.py --seed $RANDOM --data_keys cth_blood cth_bone_marrow cth_heart cth_hippocampus cth_intestine cth_kidney cth_liver cth_lung cth_lymph_node cth_pancreas cth_skeletal_muscle cth_spleen --model_seed 1 2 3 --n_latent 128 --n_epochs 400 &
+python baseline_runvis.py --seed $RANDOM --data_keys cth_blood cth_bone_marrow cth_heart cth_hippocampus cth_intestine cth_kidney cth_liver cth_lung cth_lymph_node cth_pancreas cth_skeletal_muscle cth_spleen --model_seed 1 2 3 --n_latent 128 --n_epochs 100 --model btcvae &
+python baseline_runvis.py --seed $RANDOM --data_keys cth_blood cth_bone_marrow cth_heart cth_hippocampus cth_intestine cth_kidney cth_liver cth_lung cth_lymph_node cth_pancreas cth_skeletal_muscle cth_spleen --model_seed 1 2 3 --n_latent 128 --n_epochs 100 --model michigan &
 
-#### CTH datasets
-srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/baseline/baseline_runvis.py --seed $RANDOM --data_keys cth_blood cth_bone_marrow cth_heart cth_hippocampus cth_intestine cth_kidney cth_liver cth_lung cth_lymph_node cth_pancreas cth_skeletal_muscle cth_spleen --model_seed 1 2 3 --n_latent 128 --n_epochs 400 &
+#### All datasets
+python baseline_runvis.py --seed $RANDOM --data_keys immune_hvg pancreas_scvelo retina_organoid_hvg hlca hlca_sample norman_hvg zebrafish_hvg pbmc_covid_hvg --n_latent 128 --n_epochs 400 &
+python baseline_runvis.py --seed $RANDOM --data_keys immune_hvg pancreas_scvelo retina_organoid_hvg hlca hlca_sample norman_hvg zebrafish_hvg pbmc_covid_hvg --n_latent 128 --n_epochs 100 --model btcvae &
+python baseline_runvis.py --seed $RANDOM --data_keys immune_hvg pancreas_scvelo retina_organoid_hvg hlca hlca_sample norman_hvg zebrafish_hvg pbmc_covid_hvg --n_latent 128 --n_epochs 100 --model michigan &
+
+### Blood subsets
+python baseline_runvis.py --seed $RANDOM --data_keys cth_blood_dominguez cth_blood_ren cth_blood_stephenson cth_blood_yoshida --model_seed 1 --n_latent 128 --n_epochs 400 &
 
 
 ##################################### V 1.0 #####################################

@@ -70,6 +70,7 @@ sc.settings.set_figure_params(figsize=(5, 5))
 # ## Config
 
 # %%
+benchmark_subversion = "b"
 logs_dir = Path(os.path.expanduser('~/workspace/train_logs'))
 
 
@@ -291,6 +292,10 @@ for index, row in df_shuffled.iterrows():
                 adata = adata[adata.obs['keep'] < SAMPLE_FRAC].copy()
             last_data_key = data_key
         data_type = 'anndata'
+        obsm_keys_to_copy, ground_truth_one_hot_key = [], None
+        if hasattr(dataset, 'ground_truth_one_hot_key') and dataset.ground_truth_one_hot_key is not None:
+            ground_truth_one_hot_key = dataset.ground_truth_one_hot_key
+            obsm_keys_to_copy.append(ground_truth_one_hot_key)
 
         np.random.seed(SEED)
         run_name = f"{row.model}_{datetime.now().strftime('%Y%m%d-%H%M%S-%f')}"
@@ -424,6 +429,8 @@ for index, row in df_shuffled.iterrows():
             mean_mat, var_mat = vae.get_latent_representation(return_dist=True)
             latent_adata = ad.AnnData(mean_mat, obs=adata.obs)
             latent_adata.layers['qz_var'] = var_mat
+            for obsm_key in obsm_keys_to_copy:
+                latent_adata.obsm[obsm_key] = adata.obsm[obsm_key].copy()
             vae.set_latent_dimension_stats(latent_adata, vanished_threshold=0.5)
             print("Calculating gene scores per factor ...")
             if row.n_split_latent == row.n_latent:
@@ -531,6 +538,8 @@ for index, row in df_shuffled.iterrows():
             latent = vae.get_latent_representation(adata, batch_size=4096)
             
             latent_adata = ad.AnnData(latent, obs=adata.obs)
+            for obsm_key in obsm_keys_to_copy:
+                latent_adata.obsm[obsm_key] = adata.obsm[obsm_key].copy()
 
             # For comparability with DRVI plots
             latent_adata.var['vanished'] = np.abs(latent_adata.X).max(axis=0) / np.abs(latent_adata.X).max() < 0.05
@@ -554,6 +563,8 @@ for index, row in df_shuffled.iterrows():
 
             latent_adata = ad.AnnData(latent, obs=upstream_latent_adata.obs)
             latent_adata.obsm['upstream_latent'] = upstream_latent_adata.X.copy()
+            for obsm_key in obsm_keys_to_copy:
+                latent_adata.obsm[obsm_key] = upstream_latent_adata.obsm[obsm_key].copy()
 
             # For comparability with DRVI plots
             latent_adata.var['vanished'] = np.abs(latent_adata.X).max(axis=0) / np.abs(latent_adata.X).max() < 0.05
@@ -571,9 +582,16 @@ for index, row in df_shuffled.iterrows():
         if not SKIP_EVALUATION:
             print(f"Calculating disentanglement scores ...")
             start_time = datetime.now()
+            if ground_truth_one_hot_key is not None:
+                discrete_target = None
+                one_hot_target = latent_adata.obsm[ground_truth_one_hot_key]
+            else:
+                discrete_target = latent_adata.obs[row.cell_type_key]
+                one_hot_target = None
+
             benchmark = drvi.utils.metrics.DiscreteDisentanglementBenchmark(
-                latent_adata.X, discrete_target=latent_adata.obs[row.cell_type_key],
-                metrics=['SMI', 'SPN'], aggregation_methods=['LMS', 'MSAS', 'MSGS'],
+                latent_adata.X, discrete_target=discrete_target, one_hot_target=one_hot_target,
+                metrics=['SMI', 'SPN', 'BMMI'], aggregation_methods=['LMS', 'MSAS', 'MSGS'],
                 dim_titles=latent_adata.var['title'].tolist(),
             )
             benchmark.evaluate()
@@ -582,7 +600,7 @@ for index, row in df_shuffled.iterrows():
 
             for metric_name, val in benchmark.get_results().items():
                 wandb.run.summary[metric_name] = val
-            wandb.run.summary['benchmark version'] = benchmark.version
+            wandb.run.summary['benchmark version'] = f"{benchmark.version}-{benchmark_subversion}"
 
         if not SKIP_DIM_REDUCTION:
             latent_adata.obsm['qz_mean'] = latent_adata.X

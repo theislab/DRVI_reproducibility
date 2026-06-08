@@ -75,6 +75,7 @@ sc.settings.set_figure_params(figsize=(5, 5))
 # ## Config
 
 # %%
+benchmark_subversion = "b"
 logs_dir = Path(os.path.expanduser('~/workspace/train_logs'))
 UPLOAD_IMAGES = False
 
@@ -244,6 +245,10 @@ for index, row in df_shuffled.iterrows():
             last_data_key = data_key
         data_type = 'anndata'
         cell_type_key = dataset.cell_type_key
+        obsm_keys_to_copy, ground_truth_one_hot_key = [], None
+        if hasattr(dataset, 'ground_truth_one_hot_key') and dataset.ground_truth_one_hot_key is not None:
+            ground_truth_one_hot_key = dataset.ground_truth_one_hot_key
+            obsm_keys_to_copy.append(ground_truth_one_hot_key)
 
         run_name = f"{row.model}_{datetime.now().strftime('%Y%m%d-%H%M%S-%f')}"
         run_path = logs_dir / wandb_project / data_key / "runs" / run_name
@@ -282,6 +287,8 @@ for index, row in df_shuffled.iterrows():
                 pipeline.fit(X)
                 latent = pipeline.transform(X)
                 latent_adata = ad.AnnData(latent, obs=adata.obs)
+                for obsm_key in obsm_keys_to_copy:
+                    latent_adata.obsm[obsm_key] = adata.obsm[obsm_key].copy()
                 gene_interpretability = np.asarray(pipeline.named_steps['pca'].components_, dtype=np.float32)
                 gene_names = list(adata.var_names.astype(str))
                 latent_adata.varm[GENE_INTERPRETABILITY_VARM_KEY] = gene_interpretability
@@ -299,6 +306,8 @@ for index, row in df_shuffled.iterrows():
                 pipeline.fit(X)
                 latent = pipeline.transform(X)
                 latent_adata = ad.AnnData(latent, obs=adata.obs)
+                for obsm_key in obsm_keys_to_copy:
+                    latent_adata.obsm[obsm_key] = adata.obsm[obsm_key].copy()
                 # FastICA generative form X_centered ~= S @ mixing_.T, so gene loading on
                 # source k is mixing_[:, k] (not the unmixing matrix components_).
                 gene_interpretability = np.asarray(pipeline.named_steps['ica'].mixing_.T, dtype=np.float32)
@@ -329,6 +338,8 @@ for index, row in df_shuffled.iterrows():
                 joblib.dump(m, run_path / MODEL_ARTIFACT_NAMES['mofa'])
                 latent = adata.obsm['X_mofa']
                 latent_adata = ad.AnnData(latent, obs=adata.obs)
+                for obsm_key in obsm_keys_to_copy:
+                    latent_adata.obsm[obsm_key] = adata.obsm[obsm_key].copy()
                 gene_interpretability = np.asarray(adata.varm['LFs'].T, dtype=np.float32)
                 gene_names = list(adata.var_names.astype(str))
                 latent_adata.varm[GENE_INTERPRETABILITY_VARM_KEY] = gene_interpretability
@@ -393,6 +404,8 @@ for index, row in df_shuffled.iterrows():
                     np.concatenate([subset_adata.obsm['H_norm'] for subset_adata in liger_obj.adata_list]),
                     obs=pd.concat([subset_adata.obs for subset_adata in liger_obj.adata_list]),
                 )
+                for obsm_key in obsm_keys_to_copy:
+                    latent_adata.obsm[obsm_key] = adata[latent_adata.obs.index].obsm[obsm_key].copy()
                 latent_adata.layers['H'] = np.concatenate([subset_adata.obsm['H'] for subset_adata in liger_obj.adata_list])
                 latent_adata.obsm['qz_mean'] = latent_adata.X
                 latent_adata = latent_adata[adata.obs.index].copy()
@@ -447,6 +460,8 @@ for index, row in df_shuffled.iterrows():
                     _delta = _delta.toarray()
                 
                 latent_adata = ad.AnnData(_theta, obs=adata_train.obs)
+                for obsm_key in obsm_keys_to_copy:
+                    latent_adata.obsm[obsm_key] = adata.obsm[obsm_key].copy()
                 latent_adata.obsm['qz_mean'] = latent_adata.X
                 latent_adata.obsm['delta'] = _delta
                 latent_adata.uns['scetm_alpha'] = alpha
@@ -469,6 +484,8 @@ for index, row in df_shuffled.iterrows():
                 ).train(X)
                 latent = np.load(run_path / "btcvae.npy")
                 latent_adata = ad.AnnData(latent, obs=adata.obs)
+                for obsm_key in obsm_keys_to_copy:
+                    latent_adata.obsm[obsm_key] = adata.obsm[obsm_key].copy()
                 michigan.reset_tensorflow_state()
             elif row.model == 'michigan':
                 layer = row.lognorm_layer if row.lognorm_layer is not None else 'X'
@@ -485,7 +502,7 @@ for index, row in df_shuffled.iterrows():
                     embeddings_path=str(run_path / "michigan.npy"),
                     beta_tcvae_checkpoint_dir=str(Path(btcvae_run.config['output_dir']) / "checkpoint_dir"),
                     checkpoint_dir=str(run_path / "checkpoint_dir"),
-                    epochs=row.n_epochs,
+                    epochs=10,
                     # default: 100, 100, 10; which results in latent collapse. Our optimization:
                     lambda_total_correlation=10,
                     lambda_gradient_penalty=10,
@@ -493,6 +510,8 @@ for index, row in df_shuffled.iterrows():
                 ).train(X)
                 latent = np.load(run_path / "michigan.npy")
                 latent_adata = ad.AnnData(latent, obs=adata.obs)
+                for obsm_key in obsm_keys_to_copy:
+                    latent_adata.obsm[obsm_key] = adata.obsm[obsm_key].copy()
                 michigan.reset_tensorflow_state()
             else:
                 raise NotImplementedError(f"Model: {row.model}")
@@ -529,9 +548,16 @@ for index, row in df_shuffled.iterrows():
             if not SKIP_EVALUATION:
                 print(f"Calculating disentanglement scores ...")
                 start_time = datetime.now()
+                if ground_truth_one_hot_key is not None:
+                    discrete_target = None
+                    one_hot_target = latent_adata.obsm[ground_truth_one_hot_key]
+                else:
+                    discrete_target = latent_adata.obs[row.cell_type_key]
+                    one_hot_target = None
+
                 benchmark = drvi.utils.metrics.DiscreteDisentanglementBenchmark(
-                    latent_adata.X, discrete_target=latent_adata.obs[cell_type_key],
-                    metrics=['SMI', 'SPN'], aggregation_methods=['LMS', 'MSAS', 'MSGS'],
+                    latent_adata.X, discrete_target=discrete_target, one_hot_target=one_hot_target,
+                    metrics=['SMI', 'SPN', 'BMMI'], aggregation_methods=['LMS', 'MSAS', 'MSGS'],
                     dim_titles=latent_adata.var['title'].tolist(),
                 )
                 benchmark.evaluate()
@@ -540,7 +566,7 @@ for index, row in df_shuffled.iterrows():
 
                 for metric_name, val in benchmark.get_results().items():
                     wandb.run.summary[metric_name] = val
-                wandb.run.summary['benchmark version'] = benchmark.version
+                wandb.run.summary['benchmark version'] = f"{benchmark.version}-{benchmark_subversion}"
 
             if not SKIP_DIM_REDUCTION:
                 latent_adata.obsm['qz_mean'] = latent_adata.X
@@ -569,7 +595,7 @@ for index, row in df_shuffled.iterrows():
     except BaseException as e:
         traceback.print_exc()
         wandb.finish(exit_code=1)
-        raise e
+        # raise e
 
 
 # %%

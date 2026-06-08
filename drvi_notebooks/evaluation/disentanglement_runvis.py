@@ -47,12 +47,13 @@ seed = args.seed
 
 # %%
 benchmark_version = DiscreteDisentanglementBenchmark.version
+benchmark_subversion = "b"
 
 # %%
 api = wandb.Api()
 api.flush()
 
-runs = list(api.runs("moinfar_proj/" + wandb_project))
+runs = list(api.runs("moinfar_proj/" + wandb_project, filters={"summary_metrics.benchmark version": {"$ne": f"{benchmark_version}-{benchmark_subversion}"}}))
 
 np.random.seed(seed)
 np.random.shuffle(runs)
@@ -72,20 +73,38 @@ for run_info in runs:
             print(f"Latent file for run {run_info.name}({run_info.id}) does not exist. Skipping.")
             continue
         
+        continue_benchmark = False
         if benchmark_path.exists():
-            print(f"Metrics for {run_info.name}({run_info.id}) already exist. Skipping.")
-            continue
+            if run_info.summary.get('benchmark version', '') == f"{benchmark_version}-{benchmark_subversion}":
+                print("Metrics for {run_info.name}({run_info.id}) already exist and subversion is the same. Skipping ...")
+                continue
+            else:
+                print(f"Metrics for {run_info.name}({run_info.id}) already exist but subversion is different. Completing ...")
+                continue_benchmark = True
 
         embed = ad.read_h5ad(run_path / 'latent.h5ad')
         
         ds = data_registry.get(run_info.config['params']['data_keys'])
         print(ds)
         
-        benchmark = DiscreteDisentanglementBenchmark(
-            embed.X, discrete_target=embed.obs[ds.cell_type_key],
-            metrics=['SMI', 'SPN'], aggregation_methods=['LMS', 'MSAS', 'MSGS'],
-            dim_titles=embed.var['title'].tolist(),
-        )
+        if hasattr(ds, 'ground_truth_one_hot_key') and ds.ground_truth_one_hot_key is not None:
+            discrete_target = None
+            one_hot_target = embed.obsm[ds.ground_truth_one_hot_key]
+        else:
+            discrete_target = embed.obs[ds.cell_type_key]
+            one_hot_target = None
+            
+        if not continue_benchmark:
+            benchmark = DiscreteDisentanglementBenchmark(
+                embed.X, discrete_target=discrete_target, one_hot_target=one_hot_target,
+                metrics=['SMI', 'SPN', 'BMMI'], aggregation_methods=['LMS', 'MSAS', 'MSGS'],
+                dim_titles=embed.var['title'].tolist(),
+            )
+        else:
+            benchmark = DiscreteDisentanglementBenchmark.load(
+                benchmark_path, embed.X, discrete_target=discrete_target, one_hot_target=one_hot_target,
+                metrics=['SMI', 'SPN', 'BMMI'], aggregation_methods=['LMS', 'MSAS', 'MSGS'],
+            )
         
         benchmark.evaluate()
         benchmark.save(benchmark_path)
@@ -96,8 +115,7 @@ for run_info in runs:
         for metric_name, val in results.items():
             run_info.summary[metric_name] = val
             
-        run_info.summary["benchmark version"] = benchmark_version
-        
+        run_info.summary["benchmark version"] = f"{benchmark.version}-{benchmark_subversion}"
         # Push the summary payload to the server instantly
         run_info.summary.update()
         

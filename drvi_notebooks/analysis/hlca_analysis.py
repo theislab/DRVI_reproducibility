@@ -6,11 +6,11 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.15.2
+#       jupytext_version: 1.18.1
 #   kernelspec:
-#     display_name: drvi
+#     display_name: python_apptainer
 #     language: python
-#     name: drvi
+#     name: python_apptainer
 # ---
 
 # # Imports
@@ -39,14 +39,17 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
+from scipy.optimize import linear_sum_assignment
 from scib_metrics.benchmark import Benchmarker
 
 import drvi
 from drvi.utils.metrics import DiscreteDisentanglementBenchmark
-from drvi_notebooks.utils.data.data_configs import get_data_info
+from drvi_notebooks.utils.data import data_registry, get_data_info
 from drvi_notebooks.utils.run_info import get_run_info_for_dataset
 from drvi_notebooks.utils.method_info import pretify_method_name
+from drvi_notebooks.utils.misc import get_runs_by_model_tags
 
+import wandb
 from gprofiler import GProfiler
 # -
 sc.set_figure_params(vector_friendly=True, dpi_save=300, figsize=(6,6))
@@ -79,12 +82,11 @@ col_mapping = data_info['col_mapping']
 plot_columns = data_info['plot_columns']
 pp_function = data_info['pp_function']
 data_path = data_info['data_path']
-var_gene_groups = data_info['var_gene_groups']
 cell_type_key = data_info['cell_type_key']
-exp_plot_pp = data_info['exp_plot_pp']
 control_treatment_key = data_info['control_treatment_key']
 condition_key = data_info['condition_key']
 split_key = data_info['split_key']
+sample_key = data_info['sample_key']
 # -
 import mplscience
 mplscience.available_styles()
@@ -112,47 +114,77 @@ def trim_umap(embed, old_key='X_umap', new_key='X_umap', threshold=1e-5):
 
 # # Runs to load
 
-# +
-run_info = get_run_info_for_dataset('hlca')
-RUNS_TO_LOAD = run_info.run_dirs
-scatter_point_size = run_info.scatter_point_size
-adata_to_transfer_obs = run_info.adata_to_transfer_obs
+api = wandb.Api()
 
-for k,v in RUNS_TO_LOAD.items():
-    if not os.path.exists(v):
-        raise ValueError(f"{v} does not exists.")
+# +
+api.flush()
+RUNS_TO_LOAD = get_runs_by_model_tags(
+    api, 
+    ["DRVI_runs_hlca_core_hvg_drvi_4.3", "DRVI_runs__DRVI_5.0", "DRVI_runs__DRVI_baselines_2.0"],
+    {
+        'DRVI': 'HLCA_general_analysis__DRVI',
+        'PCA': 'HLCA_general_analysis__PCA',
+        'ICA': 'HLCA_general_analysis__ICA',
+        'LIGER': 'HLCA_general_analysis__LIGER',
+        'MOFA': 'HLCA_general_analysis__MOFA',
+        'scETM': 'HLCA_general_analysis__scETM',
+        'BTCVAE': 'HLCA_general_analysis__BTCVAE',
+        'MICHIGAN': 'HLCA_general_analysis__MICHIGAN',
+        'DRVI-AP': 'HLCA_general_analysis__DRVI_AP',
+        'scVI': 'HLCA_general_analysis__scVI',
+        'scVI-PCA': 'HLCA_general_analysis__scVI_PCA',
+        'scVI-ICA': 'HLCA_general_analysis__scVI_ICA',
+    },
+)
+
+
+RUNS_TO_LOAD
 # -
 
+RUNS_TO_LOAD = {k:v[0] for k,v in RUNS_TO_LOAD.items()}
+RUNS_TO_LOAD
+
 embeds = {}
+run_paths = {}
 random_order = None
-for method_name, run_path in RUNS_TO_LOAD.items():
+for method_name, run in RUNS_TO_LOAD.items():
+    run_path = Path(run.config.get('output_dir', Path(f'~/workspace/train_logs/models/{run.name}').expanduser()))
+    run_paths[method_name] = run_path
     print(method_name)
-    if str(run_path).endswith(".h5ad"):
-        embed = sc.read(run_path)
-    else:
-        embed = sc.read(run_path / 'latent.h5ad')
-    trim_umap(embed, threshold=1e-3)
-    pp_function(embed)
+    embed = sc.read(run_path / 'latent.h5ad')
+    if 'X_umap' in embed.obsm:
+        trim_umap(embed, threshold=1e-3)
     if random_order is None:
         random_order = embed.obs.sample(frac=1.).index
     embed = embed[random_order].copy()
     embeds[method_name] = embed
 
 adata = sc.read(data_path)
-exp_plot_pp(adata)
 adata
 
+plot_obs = np.random.permutation(adata.obs.index)[:10000]
 
-
+# +
 embed_drvi = embeds['DRVI']
-model_drvi = drvi.model.DRVI.load(RUNS_TO_LOAD['DRVI'] / 'model.pt', adata, prefix='v_0_1_0_')
-adata.obsm['X_umap_drvi'] = embed_drvi[adata.obs.index].obsm['X_umap']
+model_drvi = drvi.model.DRVI.load(run_paths['DRVI'] / 'model.pt', adata, prefix='v_0_1_0_')
 
-drvi.utils.tl.set_latent_dimension_stats(model_drvi, embed_drvi)
-drvi.utils.pl.plot_latent_dimension_stats(embed_drvi, ncols=2)
 
-embed_drvi.write_h5ad(RUNS_TO_LOAD['DRVI'] / 'latent_sorted.h5ad')
+embed_new_filename = run_paths['DRVI'] / 'latent_v2_5.h5ad'
 
+if not embed_new_filename.exists():
+    embed_drvi.var['title_prev'] = embed_drvi.var['title']
+    model_drvi.set_latent_dimension_stats(embed_drvi, vanished_threshold=0.5)
+    
+    print(np.all(embed_drvi.var['title'] == embed_drvi.var['title_prev']))  # Good. no change of DR orders
+    
+    model_drvi.calculate_interpretability_scores(embed_drvi, "OOD")
+    model_drvi.calculate_interpretability_scores(embed_drvi, "IND")
+    
+    embed_drvi.write_h5ad(embed_new_filename)
+else:
+    embeds['DRVI'] = embed_drvi = sc.read_h5ad(embed_new_filename)
+embed_drvi
+# -
 
 
 
@@ -175,17 +207,27 @@ embed_subset = embed_subset[embed_subset.obs.sort_values(cell_type_key).index].c
 
 
 
+# +
+version = DiscreteDisentanglementBenchmark.version
+
+for method_name, embed in embeds.items():
+    print(method_name)
+    bench_filename = run_paths[method_name] / f'disentanglement_metrics_{version}.pkl'
+    if not bench_filename.exists():
+        bench = DiscreteDisentanglementBenchmark(embed.X, discrete_target=embed.obs[cell_type_key])
+        bench.evaluate()
+        print(bench.get_results())
+        bench.save(bench_filename)
+
+# +
+version = DiscreteDisentanglementBenchmark.version
+    
 for method_name, embed in embeds.items():
     print(method_name)
 
-    # Load mutual info of dims and cell-type from benchmarking for nicer plotting
-    version = DiscreteDisentanglementBenchmark.version
-    if str(RUNS_TO_LOAD[method_name]).endswith('.h5ad'):
-        bench_filename = Path(str(RUNS_TO_LOAD[method_name])[:-len('.h5ad')] + f'_DR_benchmark_on_{cell_type_key}_{version}.pkl')
-    else:
-        bench_filename = RUNS_TO_LOAD[method_name] / f'DR_benchmark_on_{cell_type_key}_{version}.pkl'
+    bench_filename = run_paths[method_name] / f'disentanglement_metrics_{version}.pkl'
     bench = DiscreteDisentanglementBenchmark.load(bench_filename, embed.X, discrete_target=embed.obs[cell_type_key], one_hot_target=None)
-    sim_matrix = bench.get_results_details()['SMI-disc'][unique_plot_cts].copy()
+    sim_matrix = bench.get_results_details()['SMI'][unique_plot_cts].copy()
     
     k = cell_type_key
     unique_values = list(sorted(list(embed.obs[k].astype(str).unique())))
@@ -239,12 +281,17 @@ for method_name, embed in embeds.items():
 
     plt.savefig(output_dir / f"ct_vs_dim_heatmap_rotated_{method_name}.pdf", bbox_inches='tight')
     plt.show()
+# -
+
+
+
+
 
 
 
 # +
 size = 3
-methods_to_plot = ["DRVI", "DRVI-IK", "scVI", "scETM", "MOFA", "LIGER", "MICHIGAN-opt", "PCA", "ICA", "TCVAE-opt", "scVI-PCA", "scVI-ICA",]
+methods_to_plot = ["DRVI", "DRVI-AP", "scVI", "scETM", "MOFA", "LIGER", "MICHIGAN", "PCA", "ICA", "TCVAE", "scVI-PCA", "scVI-ICA",]
 
 # dataset column is overridden in LIGER. reverting
 embeds['LIGER'].obs['dataset'] = adata[embeds['LIGER'].obs.index].obs['dataset']
@@ -308,41 +355,13 @@ for _, col in enumerate(plot_columns):
 model = model_drvi
 embed = embed_drvi
 
-filename = RUNS_TO_LOAD['DRVI'] / "traverse_adata.h5ad"
-if not (filename).exists():
-    traverse_adata = drvi.utils.tl.traverse_latent(model, embed, n_samples=200, max_noise_std=0.2)
-    drvi.utils.tl.calculate_differential_vars(traverse_adata)
-    traverse_adata.write(filename)
-else:
-    traverse_adata = sc.read(filename)
-traverse_adata
-
-# +
-dimensions_interpretability = drvi.utils.tools.iterate_on_top_differential_vars(
-    traverse_adata, key="combined_score", score_threshold=0.0
-)
-
-# For making it brief we just iterate over 5 dimensions
-for dim_title, gene_scores in dimensions_interpretability:
-    print(dim_title)
-
-    gene_scores = gene_scores[gene_scores > gene_scores.max() / 10]
-    # print(gene_scores)
-
-    relevant_genes = gene_scores.index.to_list()[:10]
-
-    print(relevant_genes)
-# -
-
-
-
 # ## Heatmap for figure
 
 # +
 # Plot heatmap again for DRVI fig3 with little better sorting and using DR notation for dimensions
 
-ct_dims = ['DR 3', 'DR 7', 'DR 2', 'DR 17', 'DR 34', 'DR 32', 'DR 20', 'DR 14', 'DR 23', 'DR 1', 'DR 8', 'DR 9', 'DR 11', 'DR 27', 'DR 31', 'DR 45', 'DR 5', 'DR 19', 'DR 39', 'DR 30', 'DR 10', 'DR 15', 'DR 47', 'DR 16', 'DR 13', 'DR 18', 'DR 26', 'DR 12', 'DR 22', 'DR 6', 'DR 4']
-process_dims = ['DR 21', 'DR 24', 'DR 25', 'DR 28', 'DR 29', 'DR 33', 'DR 35', 'DR 36', 'DR 37', 'DR 38', 'DR 40', 'DR 41', 'DR 42', 'DR 43', 'DR 44', 'DR 46', 'DR 48', 'DR 49', 'DR 50', 'DR 54', 'DR 64']
+ct_dims = ['DR 2', 'DR 6', 'DR 3', 'DR 17', 'DR 32', 'DR 31', 'DR 21', 'DR 12', 'DR 24', 'DR 34', 'DR 7', 'DR 8', 'DR 10', 'DR 26', 'DR 35', 'DR 45', 'DR 5', 'DR 18', 'DR 39', 'DR 29', 'DR 9', 'DR 15', 'DR 47', 'DR 14', 'DR 13', 'DR 16', 'DR 25', 'DR 11', 'DR 20', 'DR 4', 'DR 1']
+process_dims = ['DR 19', 'DR 22', 'DR 23', 'DR 27', 'DR 28', 'DR 30', 'DR 33', 'DR 36', 'DR 37', 'DR 38', 'DR 40', 'DR 41', 'DR 42', 'DR 43', 'DR 44', 'DR 46', 'DR 48', 'DR 49', 'DR 50', 'DR 60', 'DR 64']
 
 unique_plot_dims = list(reversed(ct_dims + process_dims))
 
@@ -393,16 +412,17 @@ plt.show()
 
 # ## Interpretability
 
-drvi.utils.pl.show_top_differential_vars(traverse_adata, key="combined_score", score_threshold=0.0)
+fig = model.plot_interpretability_scores(embed, adata, score_threshold=0.1, show=False, ncols=6, gene_symbols='feature_name')
+fig.savefig(output_dir / f'interpretability_all.pdf', bbox_inches='tight', dpi=300)
 
 # ## Interpret each non-cell-type dimension
 
 interesting_dims = [
-    "DR 27+", "DR 30+", "DR 10-", "DR 16+", "DR 22+", "DR 21-", "DR 24+", "DR 25-", "DR 28+", "DR 28-", 
-    "DR 29+", "DR 29-", "DR 33+", "DR 35+", "DR 35-", "DR 36-", "DR 37-", "DR 38+", "DR 40+", "DR 41+", 
-    "DR 42+", "DR 43+", "DR 44+", "DR 46+", "DR 48+", "DR 49-", "DR 50+", "DR 54-", "DR 64-" 
+    "DR 27+", "DR 29+", "DR 14+", "DR 20+", "DR 19-", "DR 22+", "DR 23-", "DR 27+", "DR 27-", 
+    "DR 28+", "DR 28-", "DR 30+", "DR 33+", "DR 33-", "DR 36-", "DR 37-", "DR 38+", "DR 40+", "DR 41+", 
+    "DR 42+", "DR 43+", "DR 44+", "DR 46+", "DR 48+", "DR 49-", "DR 50+", "DR 60-", "DR 64-" 
 ]
-fig = drvi.utils.pl.show_top_differential_vars(traverse_adata, key="combined_score", dim_subset=interesting_dims, score_threshold=0.0, show=False)
+fig = model.plot_interpretability_scores(embed, adata, score_threshold=0.1, show=False, ncols=5, gene_symbols='feature_name', dim_subset=interesting_dims)
 plt.tight_layout()
 fig.savefig(output_dir / f'drvi_interpretability_for_process_dimensions.pdf', bbox_inches='tight', dpi=200)
 plt.show()
@@ -416,28 +436,42 @@ plt.show()
 
 # ## GSEA for all dims
 
-# +
-gp = GProfiler(return_dataframe=True)
+int_df = model_drvi.get_interpretability_scores(embed, adata, gene_symbols="feature_name")
+int_df = int_df.loc[:, (int_df.max(axis=0)>0.1).to_list()]
+int_df
 
-for dim_title, gene_scores in drvi.utils.tl.iterate_on_top_differential_vars(
-    traverse_adata, key="combined_score", score_threshold=0.0,
-):
+# +
+threshold = 0.1
+gp = GProfiler(return_dataframe=True)
+combined_df = []
+
+for dim_title in int_df.columns:
     print(dim_title)
 
-    gene_scores = gene_scores[gene_scores > gene_scores.max() / 10]
+    gene_scores = int_df[dim_title]
+    gene_scores = gene_scores.sort_values(ascending=False)
+    gene_scores = gene_scores[gene_scores > threshold]
     print(gene_scores)
 
-    relevant_genes = gene_scores.index.to_list()[:100]
+    relevant_genes = gene_scores.index.to_list()
 
     relevant_pathways = gp.profile(
         organism="hsapiens", query=relevant_genes, background=list(adata.var.index), domain_scope="custom"
     )
+    relevant_pathways.insert(0, "Factor", dim_title)
     display(relevant_pathways[:10])
+    combined_df.append(relevant_pathways[:10])
+combined_df = pd.concat(combined_df)
+combined_df
 # -
+combined_df.to_csv(output_dir / f'gsea_results.csv', index=False)
+
 
 
 
 # ## Specifically plot some dims for main figure
+
+adata.obsm['X_umap_drvi'] = embed[adata.obs.index].obsm['X_umap']
 
 # +
 embed = embed_drvi
@@ -489,7 +523,7 @@ for i in range(3):
             ax = axes[row, 0]
             sc.pl.embedding(
                 adata, 'X_umap_drvi', 
-                color=gene_name, cmap=drvi.utils.pl.cmap.saturated_just_sky_cmap, 
+                color=gene_name, cmap=drvi.utils.pl.cmap.saturated_just_sky_cmap, gene_symbols='feature_name',
                 show=False, frameon=False, ax=ax
             )
             ax.text(0.92, 0.05, gene_name, size=15, ha='left', color='black', rotation=90, transform=ax.transAxes)
@@ -502,6 +536,7 @@ for i in range(3):
                 violin_x_title = dim_title[:-1]
             
             adata_subset = adata_subset.copy()
+            adata_subset.var.index = adata_subset.var['feature_name']
             adata_subset.obs[f'Discretized {dim_title}'] = list(embed[adata_subset.obs.index].X[:, dim_id].flatten())
             dim_max = adata_subset.obs[f'Discretized {dim_title}'].max()
             dim_min = adata_subset.obs[f'Discretized {dim_title}'].min()
@@ -547,10 +582,10 @@ for i in range(3):
 
 # +
 df = pd.DataFrame({
-    'DR 22': embed.X[:, np.argmax(embed.var['title'] == 'DR 22')],
+    'DR 20': embed.X[:, np.argmax(embed.var['title'] == 'DR 20')],
     'Lung condition': embed.obs['lung_condition'].values
 })
-ax = sns.histplot(data=df, bins=50, hue="Lung condition", x="DR 22", stat="probability", log_scale=False, common_norm=False)
+ax = sns.histplot(data=df, bins=50, hue="Lung condition", x="DR 20", stat="probability", log_scale=False, common_norm=False)
 sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
 plt.yscale('log')
 
@@ -563,10 +598,10 @@ embed.obs['ann_level_2'].unique()
 # +
 embed_subset = embed[embed.obs['ann_level_2'] == 'Blood vessels']
 df = pd.DataFrame({
-    'DR 22': embed_subset.X[:, np.argmax(embed_subset.var['title'] == 'DR 22')],
+    'DR 20': embed_subset.X[:, np.argmax(embed_subset.var['title'] == 'DR 20')],
     'Lung condition': embed_subset.obs['lung_condition'].values
 })
-ax = sns.histplot(data=df, bins=50, hue="Lung condition", x="DR 22", stat="probability", log_scale=False, common_norm=False)
+ax = sns.histplot(data=df, bins=50, hue="Lung condition", x="DR 20", stat="probability", log_scale=False, common_norm=False)
 sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
 plt.yscale('log')
 
@@ -581,7 +616,7 @@ fig = sc.pl.embedding(
 plt.show()
 
 fig = drvi.utils.pl.plot_relevant_genes_on_umap(adata, embed, traverse_adata, "combined_score", score_threshold=0.0, n_top_genes=10,
-                                                dim_subset=['DR 22+'])
+                                                dim_subset=['DR 20+'])
 
 
 
@@ -1135,7 +1170,123 @@ for ct_name, df_melted in df_melted_all.groupby('Cell type'):
 
 
 
+
+
+
+
 # # Integration quality assessment
+
+
+
+
+
+
+
+# # Remove confounding dim
+
+embed = sc.read_h5ad(run_paths['DRVI'] / 'latent_v2_5.h5ad')
+model = drvi.model.DRVI.load(run_paths['DRVI'] / 'model.pt', adata, prefix='v_0_1_0_')
+
+# DR 28 is stress response to dissociation
+
+# +
+embed_save_address = run_paths['DRVI'] / 'latent_v2_5_without_dissociation_resp_dim.h5ad'
+
+if embed_save_address.exists():
+    embed_keep_vars = sc.read_h5ad(embed_save_address)
+else:
+    embed_keep_vars = embed[:, ~(
+        embed.var['title'].isin(['DR 28']) |
+        embed.var['vanished']
+    )].copy()
+
+    sc.pp.neighbors(embed_keep_vars, n_neighbors=10, use_rep="X", n_pcs=embed_keep_vars.X.shape[1])
+    sc.tl.umap(embed_keep_vars, spread=1.0, min_dist=0.5, random_state=1)
+    sc.pp.pca(embed_keep_vars)
+
+    embed_keep_vars.write(embed_save_address)
+
+embed_keep_vars.shape
+# -
+
+col = cell_type_key
+unique_values = list(sorted(list(embed_keep_vars.obs[col].astype(str).unique())))
+palette = dict(zip(unique_values, cat_100_pallete))
+fig = sc.pl.umap(embed_keep_vars, color=col, 
+                 palette = palette, 
+                 show=False, frameon=False, title='', 
+                 legend_loc='right margin',
+                 colorbar_loc=None,
+                 return_fig=True)
+fig.savefig(output_dir / f'drvi_without_dissociation_resp_dim_umap_{col}.pdf', bbox_inches='tight', dpi=300)
+plt.show()
+
+col = condition_key
+fig = sc.pl.umap(embed_keep_vars, color=col, 
+                 show=False, frameon=False, title='', 
+                 legend_loc='right margin',
+                 colorbar_loc=None,
+                 return_fig=True)
+fig.savefig(output_dir / f'drvi_without_dissociation_resp_dim_umap_{col}.pdf', bbox_inches='tight', dpi=300)
+plt.show()
+
+
+
+adata_path = Path(data_path).expanduser()
+x_pca_path = adata_path.parent / (adata_path.stem +'_x_pca.npy')
+assert x_pca_path.exists(), f"PCA file {x_pca_path} does not exist for dataset {ds.data_key}"
+adata.obsm["X_pca"] = np.load(x_pca_path)
+
+embed.obsm['DRVI'] = embed.X
+embed.obsm['DRVI-pruned'] = embed_keep_vars[embed.obs.index].X
+embed.obsm['scANVI (HLCA original)'] = adata[embed.obs.index].obsm["X_scanvi_emb"].copy()
+embed.obsm["X_orig_pca"] = adata[embed.obs.index].obsm["X_pca"].copy()
+
+np.random.seed(1)
+adata_subset = adata[np.random.choice(adata.n_obs, size=100_000, replace=False)].copy()
+embed_subset = embed[adata_subset.obs.index].copy()
+bench = Benchmarker(
+    embed_subset, 
+    sample_key, 
+    cell_type_key, 
+    embedding_obsm_keys=['DRVI', 'DRVI-pruned', 'scANVI (HLCA original)'],
+    pre_integrated_embedding_obsm_key="X_orig_pca",
+)
+bench.benchmark()
+results_df = bench._results
+results_df
+
+bench.plot_results_table(min_max_scale=False, show=True)
+
+
+
+benchmark_version = 'v3_1'
+results = {}
+for method_name, run_path in run_paths.items():
+    if method_name in ["DRVI"]:
+        continue
+    benchmark_path = run_path / f"integration_metrics_{benchmark_version}.csv"
+    results[method_name] = pd.read_csv(benchmark_path, index_col=0).iloc[:, [0]]
+    results[method_name].columns = [method_name]
+results['DRVI-pruned'] = results_df[['DRVI-pruned']]
+results['scANVI (HLCA original)'] = results_df[['scANVI (HLCA original)']]
+results['DRVI'] = results_df[['DRVI', 'Metric Type']]
+all_results = pd.concat([df for method_name, df in results.items()], axis=1, verify_integrity=True).dropna()
+
+bench._results = all_results
+bench.plot_results_table(min_max_scale=False, show=True)
+
+methods_to_plot = ["DRVI-pruned", "DRVI", "DRVI-AP", "scVI", ]
+bench._results = all_results[methods_to_plot + ['Metric Type']]
+bench.plot_results_table(min_max_scale=False, show=True)
+
+
+
+
+
+
+
+
 
 # ## Add scANVI to the scIB metrics
 

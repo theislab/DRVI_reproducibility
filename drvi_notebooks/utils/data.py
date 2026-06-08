@@ -185,6 +185,7 @@ class ZebrafishHVG(DataInfo):
 
 class AtacNips21(DataInfo):
     data_key = "atac_nips21"
+    display_name = "NeurIPS 2021\nATAC"
     adata_path = "~/data/nips_21_multiome/atac_modality_hvg.h5ad"
     counts_layer = "fragments"
     normalized_layer = "X"
@@ -208,27 +209,31 @@ class SyntheticDataAbstract(DataInfo):
         'pert': 'Perturbation',
     }
 
-    ground_truth_one_hot = 'ground_truth_identity'
+    ground_truth_one_hot_key = 'ground_truth_identity'
 
 
 class SyntheticDataUniqueNoNoise(SyntheticDataAbstract):
     data_key = "synthetic_data_unique_no_noise"
     adata_path = "~/data/drvi/synthetic_data_unique_no_noise.h5ad"
+    display_name = "Simulated data D=1\n(no noise)"
 
 
 class SyntheticDataUnique(SyntheticDataAbstract):
     data_key = "synthetic_data_unique"
     adata_path = "~/data/drvi/synthetic_data_unique.h5ad"
+    display_name = "Simulated data D=1"
 
 
 class SyntheticDataOverlapping4NoNoise(SyntheticDataAbstract):
     data_key = "synthetic_data_overlapping_4_no_noise"
     adata_path = "~/data/drvi/synthetic_data_overlapping_4_no_noise.h5ad"
+    display_name = "Simulated data D=4\n(no noise)"
 
 
 class SyntheticDataOverlapping4(SyntheticDataAbstract):
     data_key = "synthetic_data_overlapping_4"
     adata_path = "~/data/drvi/synthetic_data_overlapping_4.h5ad"
+    display_name = "Simulated data D=4"
 
 
 # class NormanAll(NormanHVG):
@@ -483,6 +488,30 @@ class CTHSpleen(CTHBase):
     adata_path = "~/data/cth_datasets/Spleen_hvg4000.h5ad"
 
 
+class CTHBloodDominguez(CTHBlood):
+    data_key = "cth_blood_dominguez"
+    display_name = "Blood / Dominguez"
+    adata_path = "~/data/cth_datasets/Blood_hvg4000_Dominguez.h5ad"
+
+
+class CTHBloodRen(CTHBlood):
+    data_key = "cth_blood_ren"
+    display_name = "Blood / Ren"
+    adata_path = "~/data/cth_datasets/Blood_hvg4000_Ren.h5ad"
+
+
+class CTHBloodStephenson(CTHBlood):
+    data_key = "cth_blood_stephenson"
+    display_name = "Blood / Stephenson"
+    adata_path = "~/data/cth_datasets/Blood_hvg4000_Stephenson.h5ad"
+
+
+class CTHBloodYoshida(CTHBlood):
+    data_key = "cth_blood_yoshida"
+    display_name = "Blood / Yoshida"
+    adata_path = "~/data/cth_datasets/Blood_hvg4000_Yoshida.h5ad"
+
+
 class DataRegistry:
     def __init__(self):
         self._registry: Dict[str, type[DataInfo]] = {}
@@ -533,6 +562,12 @@ data_registry.register(CTHPancreas)
 data_registry.register(CTHSkeletalMuscle)
 data_registry.register(CTHSpleen)
 
+# CTH Blood subsets
+data_registry.register(CTHBloodDominguez)
+data_registry.register(CTHBloodRen)
+data_registry.register(CTHBloodStephenson)
+data_registry.register(CTHBloodYoshida)
+
 
 def get_data_info(run_name: str, version_str: str):
     """Compatibility layer for old get_data_info function."""
@@ -552,8 +587,9 @@ def get_data_info(run_name: str, version_str: str):
         'data_path': data_path,
         'cell_type_key': dataset.cell_type_key,
         'condition_key': dataset.batch_key,
+        'sample_key': getattr(dataset, 'sample_key', None),
         'display_name': dataset.display_name,
         'control_treatment_key': getattr(dataset, 'control_treatment_key', None),
         'split_key': getattr(dataset, 'split_key', None),
-        'ground_truth_one_hot_key': getattr(dataset, 'ground_truth_one_hot', None),
+        'ground_truth_one_hot_key': getattr(dataset, 'ground_truth_one_hot_key', None),
     }
