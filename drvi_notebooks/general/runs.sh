@@ -1,3 +1,60 @@
+##################################### V 5.0 ######################################
+
+## General benchmarking experiments (DRVI, DRVI-AP, scVI for each dataset)
+
+### Immune
+python drvi_runvis.py --seed $RANDOM --data_keys immune_hvg --encoder_dims 128,128 --n_latent 32 &
+python drvi_runvis.py --seed $RANDOM --data_keys immune_hvg --encoder_dims 128,128 --n_latent 32 --model scvi-pca scvi-ica &
+
+### Developmental pancreas
+python drvi_runvis.py --seed $RANDOM --data_keys pancreas_scvelo -e 1000 --encoder_dims 128 --n_latent 32 &
+python drvi_runvis.py --seed $RANDOM --data_keys pancreas_scvelo -e 1000 --encoder_dims 128 --n_latent 32 --model scvi-pca scvi-ica &
+
+### CRISPR screen
+python drvi_runvis.py --seed $RANDOM --data_keys norman_hvg --encoder_dims 512,512,512 --n_latent 64 &
+python drvi_runvis.py --seed $RANDOM --data_keys norman_hvg --encoder_dims 512,512,512 --n_latent 64 --model scvi-pca scvi-ica &
+
+### PBMC
+python drvi_runvis.py --seed $RANDOM --data_keys pbmc_covid_hvg --encoder_dims 256,256 --n_latent 64 &
+python drvi_runvis.py --seed $RANDOM --data_keys pbmc_covid_hvg --encoder_dims 256,256 --n_latent 64 --model scvi-pca scvi-ica &
+
+### HLCA
+python drvi_runvis.py --seed $RANDOM --data_keys hlca hlca_sample --encoder_dims 256,256 --n_latent 64 &
+python drvi_runvis.py --seed $RANDOM --data_keys hlca hlca_sample --encoder_dims 256,256 --n_latent 64 --model scvi-pca scvi-ica &
+
+### Daniocell
+python drvi_runvis.py --seed $RANDOM --data_keys zebrafish_hvg --encoder_dims 256,256 --n_latent 64 &
+python drvi_runvis.py --seed $RANDOM --data_keys zebrafish_hvg --encoder_dims 256,256 --n_latent 64 --model scvi-pca scvi-ica &
+
+### NeurIPS21 - scATAC
+python drvi_runvis.py --seed $RANDOM --data_keys atac_nips21 --model poissonvi peakvi drvi --encoder_dims 256,256 --n_latent 64 &
+
+### Synthetic
+python drvi_runvis.py --seed $RANDOM --data_keys synthetic_data_unique_no_noise synthetic_data_unique synthetic_data_overlapping_4_no_noise synthetic_data_overlapping_4 --max_epochs 1000 --n_latent 32 64 --encoder_dims 128 &
+python drvi_runvis.py --seed $RANDOM --data_keys synthetic_data_unique_no_noise synthetic_data_unique synthetic_data_overlapping_4_no_noise synthetic_data_overlapping_4 --max_epochs 1000 --n_latent 32 64 --encoder_dims 128 --model scvi-pca scvi-ica &
+
+## Unified Arch (n_latent 128, extended benchmarks)
+
+### CTH datasets
+# with dispersion = gene
+python drvi_runvis.py --seed $RANDOM --data_keys cth_blood cth_heart cth_hippocampus cth_kidney cth_liver cth_lung cth_lymph_node cth_pancreas cth_spleen --encoder_dims 256,256 --n_latent 128 &
+python drvi_runvis.py --seed $RANDOM --data_keys cth_blood cth_heart cth_hippocampus cth_kidney cth_liver cth_lung cth_lymph_node cth_pancreas cth_spleen --encoder_dims 256,256 --n_latent 128 --model scvi-ica scvi-pca --skip_dim_reduction &
+# with dispersion = gene-batch
+python drvi_runvis.py --seed $RANDOM --data_keys cth_bone_marrow cth_intestine cth_skeletal_muscle --encoder_dims 256,256 --n_latent 128 --dispersion gene-batch &
+python drvi_runvis.py --seed $RANDOM --data_keys cth_bone_marrow cth_intestine cth_skeletal_muscle --encoder_dims 256,256 --n_latent 128 --dispersion gene-batch --model scvi-ica scvi-pca --skip_dim_reduction &
+
+### All datasets
+python drvi_runvis.py --seed $RANDOM --data_keys pancreas_scvelo immune_hvg norman_hvg retina_organoid_hvg pbmc_covid_hvg hlca hlca_sample zebrafish_hvg --encoder_dims 256,256 --n_latent 128 &
+python drvi_runvis.py --seed $RANDOM --data_keys pancreas_scvelo immune_hvg norman_hvg retina_organoid_hvg pbmc_covid_hvg hlca hlca_sample zebrafish_hvg --encoder_dims 256,256 --n_latent 128 --model scvi-ica scvi-pca --skip_dim_reduction &
+
+### NeurIPS21 - scATAC
+python drvi_runvis.py --seed $RANDOM --data_keys atac_nips21 --model poissonvi peakvi drvi --encoder_dims 256,256 --n_latent 128 &
+
+### Blood subsets
+python drvi_runvis.py --seed $RANDOM --data_keys cth_blood_dominguez cth_blood_ren cth_blood_stephenson cth_blood_yoshida --encoder_dims 256,256 --n_latent 128 --n_split_latent MAX --model drvi --split_aggregation logsumexp --model_seed 1 &
+
+
+
 ##################################### V 4.3 #####################################
 
 

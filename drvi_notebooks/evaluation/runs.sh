@@ -1,3 +1,12 @@
+# New interface for disentanglement and integration
+python disentanglement_runvis.py --wandb_project DRVI_runs__DRVI_5.0 --seed 1 &
+python disentanglement_runvis.py --wandb_project DRVI_runs__DRVI_baselines_2.0 --seed 1 &
+
+python integration_runvis.py --wandb_project DRVI_runs__DRVI_5.0 --seed 1 &
+python integration_runvis.py --wandb_project DRVI_runs__DRVI_baselines_2.0 --seed 1 &
+
+python metric_result_plotting.py
+
 # Disentanglement
 
 ## Main study

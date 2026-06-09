@@ -6,11 +6,11 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.15.2
+#       jupytext_version: 1.18.1
 #   kernelspec:
-#     display_name: drvi
+#     display_name: python_apptainer
 #     language: python
-#     name: drvi
+#     name: python_apptainer
 # ---
 
 # # Imports
@@ -48,8 +48,14 @@ import drvi
 from drvi_notebooks.utils.data.data_configs import get_data_info
 from drvi_notebooks.utils.run_info import get_run_info_for_dataset
 from drvi_notebooks.utils.method_info import pretify_method_name
-# -
+# +
+# Simple hack
+import IPython.display
+from matplotlib_inline.backend_inline import set_matplotlib_formats
+IPython.display.set_matplotlib_formats = set_matplotlib_formats
+    
 sc.set_figure_params(vector_friendly=True, dpi_save=300)
+# -
 
 import mplscience
 mplscience.available_styles()
@@ -378,6 +384,10 @@ for dims, genes, title in relevant_dims:
 corr_scores = defaultdict(dict)
 mi_scores = defaultdict(dict)
 
+# +
+from sklearn.preprocessing import KBinsDiscretizer
+from sklearn.metrics.cluster import contingency_matrix, entropy, mutual_info_score
+
 for method_name, embed in embeds.items():
     print(method_name)
     for col, col_type in [
@@ -394,52 +404,43 @@ for method_name, embed in embeds.items():
             if col not in mi_scores[method_name]:
                 embedding_array = embed.X
                 n_vars = embed.n_vars
-                mi_score = mutual_info_regression(embedding_array, embed.obs[col]).flatten()
+                # mi_score = mutual_info_regression(embedding_array, embed.obs[col]).flatten()
+                # mi_scores[method_name][col] = mi_score
+                mi_score = np.zeros(n_vars)
+                for i in range(n_vars):
+                    discretizer = KBinsDiscretizer(n_bins=10, encode="ordinal", strategy="uniform", random_state=123)
+                    x = discretizer.fit_transform(embedding_array[:, [i]])
+                    y = discretizer.fit_transform(embed.obs[[col]].values)
+                    contingency = contingency_matrix(x.flatten(), y.flatten(), sparse=True)
+                    mi_score[i] = mutual_info_score(None, None, contingency=contingency)
+                    mi_score[i] = mi_score[i] / entropy(y)
                 mi_scores[method_name][col] = mi_score
             print(f"{col} Max MI score: ", mi_scores[method_name][col].max())
-
-# +
-mi_s_scores = {k: mi_scores[k]['S_score'].max() for k in embeds}
-mi_g2m_scores = {k: mi_scores[k]['G2M_score'].max() for k in embeds}
-
-for idx, (plot_data, title, y_label) in enumerate([
-    (mi_s_scores, 'max(MI) with S Score', 'Mutual Information'),
-    (mi_g2m_scores, 'max(MI) with G2M Score', 'Mutual Information'),
-]):
-    plot_data = {pretify_method_name(k): v for k, v in plot_data.items()}
-    plot_series = pd.Series(plot_data).sort_values(ascending=False)
-
-    plt.figure(figsize=(3, 3.5))
-    ax = plot_series.plot(kind='bar', color='lightcoral')
-    ax.grid(False)
-    plt.title(f"{title}", fontsize=12)
-    plt.xlabel('', fontsize=12)
-    plt.ylabel(f"{y_label}", fontsize=14)
-    plt.xticks(rotation=90)
-
-    # Change min y-axis for the first plot only
-    plt.ylim(0., 0.8) # Assuming max score is 1.0, set upper limit as well
-
-    # Add score labels on top of each bar
-    for p in ax.patches:
-        ax.annotate(f"  {p.get_height():.2f}",
-                    (p.get_x() + p.get_width() / 2., p.get_height()),
-                    ha='center', va='center',
-                    xytext=(0, 10),
-                    textcoords='offset points',
-                    fontsize=12,
-                    rotation=90) # Rotate the text by 90 degrees
-
-    plt.tight_layout()
-    plt.savefig(output_dir / f'cell_cycle_overall_plot_{idx+1}_updated.pdf')
-    plt.savefig(output_dir / f'cell_cycle_overall_plot_{idx+1}_updated.png')
-    plt.show()
 # -
 
-plt.rcParams.update(original_params)
+mi_s_scores = {k: mi_scores[k]['S_score'].max() for k in embeds}
+mi_g2m_scores = {k: mi_scores[k]['G2M_score'].max() for k in embeds}
+df = pd.DataFrame([mi_s_scores, mi_g2m_scores], index=["S phase", "G2M phase"]).T
+df['Sum'] = df['S phase'] + df['G2M phase']
+df.index = df.index.to_series().apply(pretify_method_name)
+df.sort_values(by='Sum', ascending=False, inplace=True)
+df
 
-# calculate DRVI improvements
-0.5235233091168858 / 0.3534779256318572, 0.47495746282584506 / 0.45862906327157127
+plt.figure(figsize=(3, 6))
+colors = ['#1f77b4', '#ff7f0e', '#2ca02c']
+ax = df.plot(kind='bar', color=colors, figsize=(4, 4), width=0.8)
+ax.grid(False)
+# plt.xlabel('Method')
+plt.ylabel('Max(SMI) with respect to phase')
+plt.title('Identification of cell cycle phases')
+plt.xticks(rotation=90)
+plt.legend(title='Metric')
+plt.grid(axis='y', linestyle='--', alpha=0.5)
+plt.tight_layout()
+plt.savefig(output_dir / f'cell_cycle_overall_plot_new.pdf')
+plt.savefig(output_dir / f'cell_cycle_overall_plot_new.png')
+
+plt.rcParams.update(original_params)
 
 set_font_in_rc_params()
 
@@ -485,13 +486,13 @@ for idx, method_name in enumerate(methods_to_plot):
     mi_scores_p1_sorted = np.sort(mi_scores[method_name][p1])
     max_dim_p1 = mi_scores[method_name][p1].argmax()
     sns.barplot(x=range(len(mi_scores_p1_sorted)), y=mi_scores_p1_sorted, ax=ax3)
-    ax3.set(xlabel='', ylabel=f'MI {p1}')
+    ax3.set(xlabel='', ylabel=f'SMI {p1}')
     ax3.set_xticklabels([])  # Remove x-axis labels
     ax3.text(0.03, 0.95, pretify_method_name(method_name), size=16, ha='left', color='black', rotation=0, transform=ax3.transAxes)
     ax3.text(len(mi_scores_p1_sorted) - 6, mi_scores_p1_sorted[-1]-0.002, 
              f'Dim {max_dim_p1 + 1}' if method_name != 'DRVI' else embed.var.iloc[max_dim_p1]['title'], 
              ha='center', va='bottom', color='black')
-    ax3.set_ylim(0, 0.55)
+    ax3.set_ylim(0, 0.4)
 
     # Bar plot for p2 MI scores
     ax4 = axes[2, idx]
@@ -504,7 +505,7 @@ for idx, method_name in enumerate(methods_to_plot):
     ax4.text(len(mi_scores_p2_sorted) - 6, mi_scores_p2_sorted[-1]-0.002, 
              f'Dim {max_dim_p2 + 1}' if method_name != 'DRVI' else embed.var.iloc[max_dim_p2]['title'], 
              ha='center', va='bottom', color='black')
-    ax4.set_ylim(0, 0.5)
+    ax4.set_ylim(0, 0.4)
 
 # Adjust layout and show the plot
 plt.tight_layout()
@@ -558,8 +559,8 @@ for idx, method_name in enumerate(methods_to_plot):
     ax.set(xlabel=f'Dim {1 + dim_pair[1]}' if method_name != 'DRVI' else embed.var.iloc[dim_pair[1]]['title'], 
            ylabel=f'Dim {1 + dim_pair[0]}' if method_name != 'DRVI' else embed.var.iloc[dim_pair[0]]['title'])
     ax.set_title(pretify_method_name(method_name))
-    ax.text(0.8, 0.03, f"MI = {mi_scores[method_name][p2][dim_pair[1]]:.3f}", size=20, ha='center', color='black', rotation=0, transform=ax.transAxes)
-    ax.text(0.07, 0.6, f"MI = {mi_scores[method_name][p1][dim_pair[0]]:.3f}", size=20, ha='center', color='black', rotation=90, transform=ax.transAxes)
+    ax.text(0.8, 0.03, f"SMI = {mi_scores[method_name][p2][dim_pair[1]]:.3f}", size=20, ha='center', color='black', rotation=0, transform=ax.transAxes)
+    ax.text(0.07, 0.6, f"SMI = {mi_scores[method_name][p1][dim_pair[0]]:.3f}", size=20, ha='center', color='black', rotation=90, transform=ax.transAxes)
     ax.legend([], [], frameon=False)
     ax.grid(False)
 
@@ -576,5 +577,24 @@ plt.savefig(dir_name / f'cell_cycle_pair_for_all_methods_legend.pdf', bbox_inche
 plt.show()
 
 plt.rcParams.update(original_params)
+
+
+
+
+
+
+
+# ## Plot dims
+
+for i, method_name in enumerate(methods_to_plot):
+    embed = embeds[method_name]
+    print(method_name)
+
+    embed.var['title'] = embed.var.index
+    embed.var['order'] = embed.var.index
+    embed.var['min'] = embed.X.min(axis=0)
+    embed.var['max'] = embed.X.max(axis=0)
+    embed.var['vanished'] = False
+    drvi.utils.plotting.plot_latent_dims_in_umap(embed)
 
 

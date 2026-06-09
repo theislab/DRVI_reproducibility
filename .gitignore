@@ -18,3 +18,6 @@ train_logs/
 **/train_logs
 lightning_logs/
 /drvi_notebooks/misc/
+/drvi_notebooks/analysis/catboost_info/
+/drvi_notebooks/analysis/tmp/
+**/wandb/

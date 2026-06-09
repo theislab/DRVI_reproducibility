@@ -1,3 +1,6 @@
+# This is a legacy file.
+# Now we use tags in wandb everywhere
+
 from collections import namedtuple
 from itertools import product
 from pathlib import Path
