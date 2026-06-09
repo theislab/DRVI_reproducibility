@@ -137,41 +137,40 @@ def tag_duplicate_runs(wandb_project, entity='moinfar_proj'):
 tag_duplicate_runs(wandb_project=wandb_project)
 
 # %%
+# for run_info in runs:
+#     try:
+#         print(f"\nChecking run {run_info.name}({run_info.id})")
 
-for run_info in runs:
-    try:
-        print(f"\nChecking run {run_info.name}({run_info.id})")
-
-        # Safely get params, defaulting to empty dict if missing
-        params = run_info.config.get('params', {})
-        input_adata = params.get('input_adata', "")
+#         # Safely get params, defaulting to empty dict if missing
+#         params = run_info.config.get('params', {})
+#         input_adata = params.get('input_adata', "")
         
-        # Ensure it exists and is a string
-        if not input_adata or not isinstance(input_adata, str):
-            continue
+#         # Ensure it exists and is a string
+#         if not input_adata or not isinstance(input_adata, str):
+#             continue
 
-        print(f"Checking input path for run {run_info.name}({run_info.id})...")
-        if not input_adata.endswith("_pca.h5ad"):
-            print("Skipping...")
-            continue
+#         print(f"Checking input path for run {run_info.name}({run_info.id})...")
+#         if not input_adata.endswith("_pca.h5ad"):
+#             print("Skipping...")
+#             continue
 
-        print(f"Fixing {run_info.name}({run_info.id})...")
-        print(input_adata)
+#         print(f"Fixing {run_info.name}({run_info.id})...")
+#         print(input_adata)
 
-        # --- THE FAST WAY ---
-        # 1. Update the local dictionary
-        params['input_adata'] = input_adata.replace("_pca.h5ad", ".h5ad")
+#         # --- THE FAST WAY ---
+#         # 1. Update the local dictionary
+#         params['input_adata'] = input_adata.replace("_pca.h5ad", ".h5ad")
         
-        # 2. Reassign the params back to the config
-        run_info.config['params'] = params
+#         # 2. Reassign the params back to the config
+#         run_info.config['params'] = params
         
-        # 3. Push only the config metadata to the server instantly
-        run_info.update()
+#         # 3. Push only the config metadata to the server instantly
+#         run_info.update()
         
-        print(f"Updated successfully in a fraction of a second!")
+#         print(f"Updated successfully in a fraction of a second!")
 
-    except Exception as e:
-        traceback.print_exc()
+#     except Exception as e:
+#         traceback.print_exc()
 
 # %%
 # for run_info in runs:
