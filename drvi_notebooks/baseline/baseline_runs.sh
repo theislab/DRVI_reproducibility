@@ -4,9 +4,11 @@
 
 ### Smaller datasets
 python baseline_runvis.py --seed $RANDOM --data_keys immune_hvg retina_organoid_hvg --n_latent 32 --n_epochs 400 &
-python baseline_runvis.py --seed $RANDOM --data_keys pancreas_scvelo --n_latent 32 --n_epochs 1000 &
 python baseline_runvis.py --seed $RANDOM --data_keys immune_hvg retina_organoid_hvg --n_latent 32 --n_epochs 100 --model btcvae &
 python baseline_runvis.py --seed $RANDOM --data_keys immune_hvg retina_organoid_hvg --n_latent 32 --n_epochs 100 --model michigan &
+python baseline_runvis.py --seed $RANDOM --data_keys pancreas_scvelo --n_latent 32 --n_epochs 1000 &
+python baseline_runvis.py --seed $RANDOM --data_keys pancreas_scvelo --n_latent 32 --n_epochs 100 --model btcvae &
+python baseline_runvis.py --seed $RANDOM --data_keys pancreas_scvelo --n_latent 32 --n_epochs 100 --model michigan &
 
 
 ### Larger datasets
