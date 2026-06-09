@@ -1,12 +1,9 @@
 # New interface for disentanglement and integration
-srun -p cpu_p --qos=cpu_normal -c 10 -t 24:00:00  --mem=500G --export=ALL apptainer exec --cwd ~ --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/evaluation/disentanglement_runvis.py --wandb_project DRVI_runs__DRVI_5.0 --seed 1 &
+python disentanglement_runvis.py --wandb_project DRVI_runs__DRVI_5.0 --seed 1 &
+python disentanglement_runvis.py --wandb_project DRVI_runs__DRVI_baselines_2.0 --seed 1 &
 
-srun -p cpu_p --qos=cpu_normal -c 10 -t 24:00:00  --mem=500G --export=ALL apptainer exec --cwd ~ --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/evaluation/disentanglement_runvis.py --wandb_project DRVI_runs__DRVI_baselines_2.0 --seed 1 &
-
-
-srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/evaluation/integration_runvis.py --wandb_project DRVI_runs__DRVI_5.0 --seed 1 &
-
-srun -p gpu_p --qos=gpu_normal --constraint=h100_80gb -c 4 -t 24:00:00  --gres=gpu:1 --mem=100G --export=ALL apptainer exec --cwd ~ --nv --bind /localscratch --bind /lustre/groups/ml01/ --overlay ~/containers/python312_drvi_new.overlay ~/containers/python312_drvi_new.sif python /home/icb/amirali.moinfar/projects/drvi_reproducibility_public/drvi_notebooks/evaluation/integration_runvis.py --wandb_project DRVI_runs__DRVI_baselines_2.0 --seed 1 &
+python integration_runvis.py --wandb_project DRVI_runs__DRVI_5.0 --seed 1 &
+python integration_runvis.py --wandb_project DRVI_runs__DRVI_baselines_2.0 --seed 1 &
 
 
 # Disentanglement
