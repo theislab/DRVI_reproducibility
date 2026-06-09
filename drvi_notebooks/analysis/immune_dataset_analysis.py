@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.18.1
+#       jupytext_version: 1.19.1
 #   kernelspec:
 #     display_name: python_apptainer
 #     language: python
@@ -472,100 +472,6 @@ plot_per_latent_scatter(embed, [cell_type_key], col_mapping, xy_limit=5.5, dimen
                         save_fn=save_fn, pp_fn=pp_fn, zero_lines=True)
 plt.rcParams.update(original_params)
 # -
-
-
-
-
-
-
-# # Remove confounding dim
-
-embed = sc.read_h5ad(run_paths['DRVI'] / 'latent_v2_5.h5ad')
-model = drvi.model.DRVI.load(run_paths['DRVI'] / 'model.pt', adata, prefix='v_0_1_0_')
-
-# +
-embed_save_address = run_paths['DRVI'] / 'latent_v2_5_without_dissociation_resp_dim.h5ad'
-
-if embed_save_address.exists():
-    embed_keep_vars = sc.read_h5ad(embed_save_address)
-else:
-    embed_keep_vars = embed[:, ~(embed.var['title'].isin(['DR 25']))].copy()
-
-    sc.pp.neighbors(embed_keep_vars, n_neighbors=10, use_rep="X", n_pcs=embed_keep_vars.X.shape[1])
-    sc.tl.umap(embed_keep_vars, spread=1.0, min_dist=0.5, random_state=1)
-    sc.pp.pca(embed_keep_vars)
-
-    embed_keep_vars.write(embed_save_address)
-
-embed_keep_vars.shape
-# -
-
-col = cell_type_key
-unique_values = list(sorted(list(embed_keep_vars.obs[col].astype(str).unique())))
-palette = dict(zip(unique_values, cat_20_pallete))
-fig = sc.pl.umap(embed_keep_vars, color=col, 
-                 palette = palette, 
-                 show=False, frameon=False, title='', 
-                 legend_loc='right margin',
-                 colorbar_loc=None,
-                 return_fig=True)
-fig.savefig(output_dir / f'drvi_without_dissociation_resp_dim_umap_{col}.pdf', bbox_inches='tight', dpi=300)
-plt.show()
-
-col = condition_key
-fig = sc.pl.umap(embed_keep_vars, color=col, 
-                 show=False, frameon=False, title='', 
-                 legend_loc='right margin',
-                 colorbar_loc=None,
-                 return_fig=True)
-fig.savefig(output_dir / f'drvi_without_dissociation_resp_dim_umap_{col}.pdf', bbox_inches='tight', dpi=300)
-plt.show()
-
-
-
-adata_path = Path(data_path).expanduser()
-x_pca_path = adata_path.parent / (adata_path.stem +'_x_pca.npy')
-assert x_pca_path.exists(), f"PCA file {x_pca_path} does not exist for dataset {ds.data_key}"
-adata.obsm["X_pca"] = np.load(x_pca_path)
-
-embed.obsm['DRVI'] = embed.X
-embed.obsm['DRVI-pruned'] = embed_keep_vars[embed.obs.index].X
-embed.obsm["X_orig_pca"] = adata[embed.obs.index].obsm["X_pca"].copy()
-
-bench = Benchmarker(
-    embed, 
-    condition_key, 
-    cell_type_key, 
-    embedding_obsm_keys=['DRVI', 'DRVI-pruned'],
-    pre_integrated_embedding_obsm_key="X_orig_pca",
-)
-bench.benchmark()
-results_df = bench._results
-results_df
-
-bench.plot_results_table(min_max_scale=False, show=True)
-
-
-
-benchmark_version = 'v3_1'
-results = {}
-for method_name, run_path in run_paths.items():
-    if method_name in ["DRVI"]:
-        continue
-    benchmark_path = run_path / f"integration_metrics_{benchmark_version}.csv"
-    results[method_name] = pd.read_csv(benchmark_path, index_col=0).iloc[:, [0]]
-    results[method_name].columns = [method_name]
-results['DRVI-pruned'] = results_df[['DRVI-pruned']]
-results['DRVI'] = results_df[['DRVI', 'Metric Type']]
-all_results = pd.concat([df for method_name, df in results.items()], axis=1, verify_integrity=True).dropna()
-
-bench._results = all_results
-bench.plot_results_table(min_max_scale=False, show=True)
-
-methods_to_plot = ["DRVI-pruned", "DRVI", "DRVI-AP", "scVI", ]
-bench._results = all_results[methods_to_plot + ['Metric Type']]
-bench.plot_results_table(min_max_scale=False, show=True)
-
 
 
 

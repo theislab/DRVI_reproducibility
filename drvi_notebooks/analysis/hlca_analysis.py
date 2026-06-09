@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.18.1
+#       jupytext_version: 1.19.1
 #   kernelspec:
 #     display_name: python_apptainer
 #     language: python
@@ -1171,10 +1171,6 @@ for ct_name, df_melted in df_melted_all.groupby('Cell type'):
 
 
 
-
-
-
-# # Integration quality assessment
 
 
 
