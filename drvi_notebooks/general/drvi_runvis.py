@@ -320,7 +320,7 @@ for index, row in df_shuffled.iterrows():
         encoder_dims=tuple([int(x) for x in row.encoder_dims.split(",")]) if row.encoder_dims != "" else []
         decoder_dims=tuple([int(x) for x in row.decoder_dims.split(",")]) if row.decoder_dims != "" else []
 
-        if row.model == 'drvi':
+        if row.model in ['drvi', 'drvi_on_scvi']:
             assert data_type == 'anndata'
             train_adata = adata.copy()
 
@@ -333,55 +333,85 @@ for index, row in df_shuffled.iterrows():
                 layer=layer,
                 batch_key=row.batch_key,
                 labels_key=row.cell_type_key,  # only used for calculation and logging of metrics
-                is_count_data=is_count_data
             )
+            if row.model == 'drvi':
+                # The scvi-tools external DRVI (drvi_on_scvi) always treats X as counts and does
+                # not accept an is_count_data flag in setup_anndata.
+                data_setup_params['is_count_data'] = is_count_data
             if row.dispersion == 'gene-batch':
                 assert dataset.dataset_key is not None
                 data_setup_params['categorical_covariate_keys'] = [data_setup_params['batch_key']]
                 data_setup_params['batch_key'] = dataset.dataset_key
-            
-            # Model Parameters
-            encoder_layer_factory = None
-            decoder_layer_factory = None
 
-            encoder_kwargs = {}
-            decoder_kwargs = {}
-            activation_dict = {
-                'relu': torch.nn.ReLU,
-                'gelu': torch.nn.GELU,
-                'elu': torch.nn.ELU,
-            }
-            encoder_kwargs['activation_fn'] = activation_dict[row.encoder_activation_fn]
-            decoder_kwargs['activation_fn'] = activation_dict[row.decoder_activation_fn]
+            if row.model == 'drvi':
+                # Model Parameters
+                encoder_layer_factory = None
+                decoder_layer_factory = None
 
-            model_params = dict(
-                n_latent=row.n_latent,
-                n_split_latent=row.n_split_latent,
-                split_method=row.split_method,
-                split_aggregation=row.split_aggregation,
-                decoder_reuse_weights=row.decoder_reuse_weights,
-                encoder_dims=encoder_dims,
-                decoder_dims=decoder_dims,
-                covariate_modeling_strategy=row.cov_model,
-                gene_likelihood=row.gene_likelihood,
-                dispersion=row.dispersion,
-                prior=row.prior,
-                var_activation = row.var_activation,
-                mean_activation = row.mean_activation,
-                fill_in_the_blanks_ratio=row.drop_and_predict_ratio,
-                input_dropout_rate=row.input_dropout,
-                encoder_dropout_rate=row.encoder_dropout,
-                decoder_dropout_rate=row.decoder_dropout,
-                deeply_inject_covariates=row.inject_covariates == 1,
-                encode_covariates=row.encode_covariates == 1,
-                use_batch_norm=row.batch_norm,
-                use_layer_norm=row.layer_norm,
-                affine_batch_norm=row.affine_batch_norm,
-                encoder_layer_factory=encoder_layer_factory,
-                decoder_layer_factory=decoder_layer_factory,
-                extra_encoder_kwargs=encoder_kwargs,
-                extra_decoder_kwargs=decoder_kwargs,
-            )
+                encoder_kwargs = {}
+                decoder_kwargs = {}
+                activation_dict = {
+                    'relu': torch.nn.ReLU,
+                    'gelu': torch.nn.GELU,
+                    'elu': torch.nn.ELU,
+                }
+                encoder_kwargs['activation_fn'] = activation_dict[row.encoder_activation_fn]
+                decoder_kwargs['activation_fn'] = activation_dict[row.decoder_activation_fn]
+
+                model_params = dict(
+                    n_latent=row.n_latent,
+                    n_split_latent=row.n_split_latent,
+                    split_method=row.split_method,
+                    split_aggregation=row.split_aggregation,
+                    decoder_reuse_weights=row.decoder_reuse_weights,
+                    encoder_dims=encoder_dims,
+                    decoder_dims=decoder_dims,
+                    covariate_modeling_strategy=row.cov_model,
+                    gene_likelihood=row.gene_likelihood,
+                    dispersion=row.dispersion,
+                    prior=row.prior,
+                    var_activation = row.var_activation,
+                    mean_activation = row.mean_activation,
+                    fill_in_the_blanks_ratio=row.drop_and_predict_ratio,
+                    input_dropout_rate=row.input_dropout,
+                    encoder_dropout_rate=row.encoder_dropout,
+                    decoder_dropout_rate=row.decoder_dropout,
+                    deeply_inject_covariates=row.inject_covariates == 1,
+                    encode_covariates=row.encode_covariates == 1,
+                    use_batch_norm=row.batch_norm,
+                    use_layer_norm=row.layer_norm,
+                    affine_batch_norm=row.affine_batch_norm,
+                    encoder_layer_factory=encoder_layer_factory,
+                    decoder_layer_factory=decoder_layer_factory,
+                    extra_encoder_kwargs=encoder_kwargs,
+                    extra_decoder_kwargs=decoder_kwargs,
+                )
+            else:  # drvi_on_scvi (scvi.external.DRVI)
+                # The external port uses uniform hidden dims (n_hidden + n_layers) and a single
+                # activation for both encoder and decoder, and does not support DRVI's non-core
+                # knobs (prior, mean/var activation, input/decoder dropout, affine batch norm,
+                # layer factories, covariate_modeling_strategy). The disentangled benchmark config
+                # only uses the parameters below, so they map cleanly.
+                assert all([d == encoder_dims[0] for d in encoder_dims])
+                assert all([d == encoder_dims[0] for d in decoder_dims])
+                assert row.encoder_activation_fn == row.decoder_activation_fn
+                model_params = dict(
+                    n_latent=row.n_latent,
+                    n_split_latent=row.n_split_latent,
+                    split_method=row.split_method,
+                    split_aggregation=row.split_aggregation,
+                    decoder_reuse_weights=row.decoder_reuse_weights,
+                    n_hidden=encoder_dims[0],
+                    n_layers=len(encoder_dims),
+                    gene_likelihood=row.gene_likelihood,
+                    dispersion=row.dispersion,
+                    dropout_rate=row.encoder_dropout,
+                    deeply_inject_covariates=row.inject_covariates == 1,
+                    encode_covariates=row.encode_covariates == 1,
+                    use_batch_norm=row.batch_norm,
+                    use_layer_norm=row.layer_norm,
+                    activation_fn=row.encoder_activation_fn,
+                )
 
             # Training Parameters
             train_params = dict(
@@ -416,8 +446,12 @@ for index, row in df_shuffled.iterrows():
             scvi.settings.seed = row.model_seed
 
             # Run
-            drvi.model.DRVI.setup_anndata(train_adata, **data_setup_params)
-            vae = drvi.model.DRVI(train_adata, **model_params)
+            if row.model == 'drvi':
+                drvi.model.DRVI.setup_anndata(train_adata, **data_setup_params)
+                vae = drvi.model.DRVI(train_adata, **model_params)
+            else:  # drvi_on_scvi (scvi.external.DRVI)
+                scvi.external.DRVI.setup_anndata(train_adata, **data_setup_params)
+                vae = scvi.external.DRVI(train_adata, **model_params)
             wb_logger.log_hyperparams({'model_arch': str(vae.module)})
 
             train_start=datetime.now()

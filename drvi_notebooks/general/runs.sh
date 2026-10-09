@@ -1,3 +1,33 @@
+##################################### V 5.1 - DRVI on scvi-tools ##################################
+
+## Benchmark the scvi-tools external DRVI (scvi.external.DRVI) against the standalone drvi package,
+## using the same disentangled DRVI config (n_split_latent MAX, split_aggregation logsumexp).
+## These runs go to a separate wandb project via --wb_prefix (DRVI_runs_drvi_on_scvi_2__DRVI_5.0).
+## Uses the fixed scvi-tools (add_drvi @ 632ee486) where the DRVI decoder uses no dropout.
+
+export WB_PREFIX=drvi_on_scvi_2_
+DRVI_ON_SCVI="--model drvi_on_scvi --n_split_latent MAX --split_aggregation logsumexp --wb_prefix $WB_PREFIX"
+
+### General benchmarking (dataset-specific n_latent, mirrors V5.0 drvi runs)
+python drvi_runvis.py --seed $RANDOM --data_keys immune_hvg --encoder_dims 128,128 --n_latent 32 $DRVI_ON_SCVI &
+python drvi_runvis.py --seed $RANDOM --data_keys pancreas_scvelo -e 1000 --encoder_dims 128 --n_latent 32 $DRVI_ON_SCVI &
+python drvi_runvis.py --seed $RANDOM --data_keys norman_hvg --encoder_dims 512,512,512 --n_latent 64 $DRVI_ON_SCVI &
+python drvi_runvis.py --seed $RANDOM --data_keys pbmc_covid_hvg --encoder_dims 256,256 --n_latent 64 $DRVI_ON_SCVI &
+python drvi_runvis.py --seed $RANDOM --data_keys hlca hlca_sample --encoder_dims 256,256 --n_latent 64 $DRVI_ON_SCVI &
+python drvi_runvis.py --seed $RANDOM --data_keys zebrafish_hvg --encoder_dims 256,256 --n_latent 64 $DRVI_ON_SCVI &
+python drvi_runvis.py --seed $RANDOM --data_keys atac_nips21 --encoder_dims 256,256 --n_latent 64 $DRVI_ON_SCVI &
+python drvi_runvis.py --seed $RANDOM --data_keys synthetic_data_unique_no_noise synthetic_data_unique synthetic_data_overlapping_4_no_noise synthetic_data_overlapping_4 --max_epochs 1000 --n_latent 32 64 --encoder_dims 128 $DRVI_ON_SCVI &
+
+### Unified Arch (n_latent 128, mirrors V5.0 drvi runs)
+python drvi_runvis.py --seed $RANDOM --data_keys cth_blood cth_heart cth_hippocampus cth_kidney cth_liver cth_lung cth_lymph_node cth_pancreas cth_spleen --encoder_dims 256,256 --n_latent 128 $DRVI_ON_SCVI &
+python drvi_runvis.py --seed $RANDOM --data_keys cth_bone_marrow cth_intestine cth_skeletal_muscle --encoder_dims 256,256 --n_latent 128 --dispersion gene-batch $DRVI_ON_SCVI &
+python drvi_runvis.py --seed $RANDOM --data_keys pancreas_scvelo immune_hvg norman_hvg retina_organoid_hvg pbmc_covid_hvg hlca hlca_sample zebrafish_hvg --encoder_dims 256,256 --n_latent 128 $DRVI_ON_SCVI &
+python drvi_runvis.py --seed $RANDOM --data_keys atac_nips21 --encoder_dims 256,256 --n_latent 128 $DRVI_ON_SCVI &
+python drvi_runvis.py --seed $RANDOM --data_keys cth_blood_dominguez cth_blood_ren cth_blood_stephenson cth_blood_yoshida --encoder_dims 256,256 --n_latent 128 --model_seed 1 $DRVI_ON_SCVI &
+
+
+
+
 ##################################### V 5.0 ######################################
 
 ## General benchmarking experiments (DRVI, DRVI-AP, scVI for each dataset)

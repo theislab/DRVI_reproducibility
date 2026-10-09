@@ -5,6 +5,9 @@ python disentanglement_runvis.py --wandb_project DRVI_runs__DRVI_baselines_2.0 -
 python integration_runvis.py --wandb_project DRVI_runs__DRVI_5.0 --seed 1 &
 python integration_runvis.py --wandb_project DRVI_runs__DRVI_baselines_2.0 --seed 1 &
 
+# scib integration check for the drvi_on_scvi (scvi.external.DRVI) runs
+python integration_runvis.py --wandb_project DRVI_runs_drvi_on_scvi__DRVI_5.0 --seed 1 &
+
 python metric_result_plotting.py
 
 # Disentanglement
